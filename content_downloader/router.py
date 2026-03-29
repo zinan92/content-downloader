@@ -115,6 +115,10 @@ def get_adapter(
                 pass
         return DouyinAdapter(cookies=cookies)
 
+    if platform == "xhs":
+        from content_downloader.adapters.xhs.adapter import XHSAdapter
+        return XHSAdapter()
+
     # Real platform adapters are stubs — they raise NotImplementedError when called.
     # They are registered here so `platforms` command can list them.
     from content_downloader.adapters.stub import StubAdapter

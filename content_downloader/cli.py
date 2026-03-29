@@ -290,6 +290,6 @@ def platforms_cmd() -> None:
         "fixture": "Fixture (testing) — fixture.test/video/*, fixture.test/image/*, fixture.test/user/*",
     }
     for platform in list_supported_platforms():
-        status = "[ready]" if platform in ("fixture", "douyin") else "[stub — Phase 2+]"
+        status = "[ready]" if platform in ("fixture", "douyin", "xhs") else "[stub — Phase 2+]"
         desc = descriptions.get(platform, platform)
         click.echo(f"  {status:20s} {desc}")
