@@ -17,9 +17,9 @@
 
 ### Adapters
 
-- [ ] **ADAPT-01**: 抖音 adapter — 单条视频 URL 下载（去水印 + 封面 + metadata）
-- [ ] **ADAPT-02**: 抖音 adapter — profile URL 批量下载（支持 post/like/collection 模式）
-- [ ] **ADAPT-03**: 抖音 adapter — 短链接自动解析（v.douyin.com → 完整 URL）
+- [x] **ADAPT-01**: 抖音 adapter — 单条视频 URL 下载（去水印 + 封面 + metadata）
+- [x] **ADAPT-02**: 抖音 adapter — profile URL 批量下载（支持 post/like/collection 模式）
+- [x] **ADAPT-03**: 抖音 adapter — 短链接自动解析（v.douyin.com → 完整 URL）
 - [ ] **ADAPT-04**: 小红书 adapter — 单条笔记 URL 下载（图片/视频 + metadata）
 - [ ] **ADAPT-05**: 小红书 adapter — profile URL 批量下载
 - [ ] **ADAPT-06**: 小红书 adapter — 通过 XHS-Downloader HTTP API 调用（sidecar 模式）

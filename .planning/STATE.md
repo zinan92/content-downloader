@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-29T09:48:14.377Z"
+last_updated: "2026-03-29T10:30:05.614Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 0
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # State: content-downloader
@@ -18,7 +18,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** 给一个 URL，拿回标准化的本地文件
-**Current focus:** Phase 02 — real platform adapters (douyin, xhs, wechat_oa, x)
+**Current focus:** Phase 02 — douyin-adapter
 
 ## Current Status
 
@@ -40,12 +40,16 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 - **StubAdapter for unimplemented platforms** — router can list all 5 platforms now; real adapters added in Phase 2+
 - **filelock for manifest** — process-safe concurrent writes; critical for batch/parallel downloads
 - **Adapter writes media+metadata.json; OutputManager writes content_item.json** — clear responsibility split
+- [Phase 02-douyin-adapter]: httpx replaces aiohttp — consistent with project deps, simpler async context
+- [Phase 02-douyin-adapter]: XBogus/ABogus algorithms copied exactly from source — no simplification
+- [Phase 02-douyin-adapter]: CookieManager simplified to JSON-file/dict only — removed Playwright dependency
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01-scaffold-core | PLAN | 8 min | 9 | 16 |
+| Phase 02-douyin-adapter PPLAN | 11 | 8 tasks | 15 files |
 
 ## Stopped At
 
