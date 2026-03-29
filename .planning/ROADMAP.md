@@ -9,7 +9,7 @@
 |-------|------|-------------|------|
 | 1 | 1/1 | Complete   | 2026-03-29 |
 | 2 | 1/1 | Complete   | 2026-03-29 |
-| 3 | XHS Adapter | ADAPT-04~06 | XHS-Downloader HTTP API 集成，小红书下载可用 |
+| 3 | 1/1 | Complete   | 2026-03-29 |
 | 4 | WeChat OA Adapter | ADAPT-07 | 公众号文章 HTML + 图片下载可用 |
 | 5 | X Adapter | ADAPT-08 | X/Twitter 媒体下载可用 |
 
