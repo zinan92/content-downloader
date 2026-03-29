@@ -63,12 +63,19 @@ def main() -> None:
     default=False,
     help="Re-download even if item already exists.",
 )
+@click.option(
+    "--cookies",
+    default=None,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to cookies JSON file (required for authenticated platforms like Douyin).",
+)
 def download_cmd(
     url: str,
     output_dir: Path,
     limit: int,
     since: str | None,
     force: bool,
+    cookies: Path | None,
 ) -> None:
     """Download a single content item or an entire profile.
 
@@ -81,7 +88,7 @@ def download_cmd(
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    adapter = get_adapter(url)
+    adapter = get_adapter(url, cookies_path=cookies)
     output_mgr = OutputManager(output_dir)
     manifest_mgr = ManifestManager(output_dir)
 
@@ -283,6 +290,6 @@ def platforms_cmd() -> None:
         "fixture": "Fixture (testing) — fixture.test/video/*, fixture.test/image/*, fixture.test/user/*",
     }
     for platform in list_supported_platforms():
-        status = "[ready]" if platform == "fixture" else "[stub — Phase 2]"
+        status = "[ready]" if platform in ("fixture", "douyin") else "[stub — Phase 2+]"
         desc = descriptions.get(platform, platform)
         click.echo(f"  {status:20s} {desc}")

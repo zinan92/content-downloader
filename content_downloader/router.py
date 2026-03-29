@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from content_downloader.adapters.base import PlatformAdapter
@@ -77,7 +79,10 @@ def classify_url(url: str) -> tuple[str, str]:
     raise UnsupportedPlatformError(url)
 
 
-def get_adapter(url: str) -> "PlatformAdapter":
+def get_adapter(
+    url: str,
+    cookies_path: Optional[Path] = None,
+) -> "PlatformAdapter":
     """Return the appropriate adapter instance for the given URL.
 
     Imports adapters lazily to avoid circular dependencies and allow
@@ -85,6 +90,8 @@ def get_adapter(url: str) -> "PlatformAdapter":
 
     Args:
         url: The URL to route.
+        cookies_path: Optional path to a cookies JSON file (used by platforms
+                      that require authentication, e.g. Douyin).
 
     Returns:
         An instantiated adapter that ``can_handle(url)`` returns True.
@@ -97,6 +104,16 @@ def get_adapter(url: str) -> "PlatformAdapter":
     if platform == "fixture":
         from content_downloader.adapters.fixture import FixtureAdapter
         return FixtureAdapter()
+
+    if platform == "douyin":
+        from content_downloader.adapters.douyin.adapter import DouyinAdapter
+        cookies: dict = {}
+        if cookies_path and cookies_path.exists():
+            try:
+                cookies = json.loads(cookies_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return DouyinAdapter(cookies=cookies)
 
     # Real platform adapters are stubs — they raise NotImplementedError when called.
     # They are registered here so `platforms` command can list them.
