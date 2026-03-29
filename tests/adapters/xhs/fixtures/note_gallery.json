@@ -1,0 +1,37 @@
+{
+  "note_id": "abc123gallery",
+  "id": "abc123gallery",
+  "type": "normal",
+  "title": "Beautiful Sunset Photos",
+  "desc": "A collection of sunset photos taken at Bund, Shanghai",
+  "user_id": "user456",
+  "nickname": "SunsetPhotographer",
+  "time": 1710000000000,
+  "note_url": "https://www.xiaohongshu.com/explore/abc123gallery",
+  "liked_count": 1024,
+  "comment_count": 88,
+  "share_count": 256,
+  "collected_count": 512,
+  "image_list": [
+    {
+      "url_list": [
+        "https://sns-img-hw.xhscdn.com/image1.jpg",
+        "https://sns-img-hw.xhscdn.com/image1_thumb.jpg"
+      ],
+      "url": "https://sns-img-hw.xhscdn.com/image1.jpg"
+    },
+    {
+      "url_list": [
+        "https://sns-img-hw.xhscdn.com/image2.jpg"
+      ],
+      "url": "https://sns-img-hw.xhscdn.com/image2.jpg"
+    },
+    {
+      "url_list": [
+        "https://sns-img-hw.xhscdn.com/image3.jpg"
+      ],
+      "url": "https://sns-img-hw.xhscdn.com/image3.jpg"
+    }
+  ],
+  "cover_url": "https://sns-img-hw.xhscdn.com/cover_gallery.jpg"
+}
