@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
@@ -189,7 +189,7 @@ class WeChatOAAdapter:
             shares=0,
             collects=0,
             views=0,
-            downloaded_at=datetime.utcnow().isoformat() + "Z",
+            downloaded_at=datetime.now(timezone.utc).isoformat(),
         )
 
         # Write content_item.json

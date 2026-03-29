@@ -119,6 +119,14 @@ def get_adapter(
         from content_downloader.adapters.xhs.adapter import XHSAdapter
         return XHSAdapter()
 
+    if platform == "x":
+        from content_downloader.adapters.x.adapter import XAdapter
+        return XAdapter()
+
+    if platform == "wechat_oa":
+        from content_downloader.adapters.wechat_oa.adapter import WeChatOAAdapter
+        return WeChatOAAdapter()
+
     # Real platform adapters are stubs — they raise NotImplementedError when called.
     # They are registered here so `platforms` command can list them.
     from content_downloader.adapters.stub import StubAdapter
