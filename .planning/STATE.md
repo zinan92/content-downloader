@@ -18,7 +18,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** 给一个 URL，拿回标准化的本地文件
-**Current focus:** Phase 05 — x-adapter
+**Current focus:** Phase 05 — x-adapter COMPLETE
 
 ## Current Status
 
@@ -33,6 +33,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 | 2026-03-29 | Project initialized | PROJECT.md, REQUIREMENTS.md, ROADMAP.md created |
 | 2026-03-29 | Phase 1 Plan executed | 9 tasks, 116 tests, 93% coverage, all passing |
 | 2026-03-29 | Phase 04 PLAN executed | 3 tasks, 48 tests, 100% coverage on new files, all passing |
+| 2026-03-29 | Phase 05 PLAN executed | 3 tasks, 41 tests, 95-100% coverage on new files, all passing |
 
 ## Decisions
 
@@ -49,6 +50,9 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 - [Phase 04-wechat-oa-adapter]: stdlib html.parser + re instead of BeautifulSoup — WeChat HTML structure is fixed; no external dep needed
 - [Phase 04-wechat-oa-adapter]: audio voice_encode_fileid saved as text IDs, not downloaded — WeChat audio requires API auth
 - [Phase 04-wechat-oa-adapter]: image download failures are non-fatal (logged + skipped) — aligns with SAFE-02
+- [Phase 05-x-adapter]: yt-dlp as external CLI not Python library — no API key, subprocess boundary is clean
+- [Phase 05-x-adapter]: asyncio.create_subprocess_exec not shell — URL as positional arg, prevents injection
+- [Phase 05-x-adapter]: FileNotFoundError from fetch_post signals text-only tweet — adapter handles gracefully
 
 ## Performance Metrics
 
@@ -58,7 +62,8 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 | Phase 02-douyin-adapter PPLAN | 11 | 8 tasks | 15 files |
 | Phase 03-xhs-adapter PPLAN | 15 min | 7 tasks | 13 files |
 | 04-wechat-oa-adapter | PLAN | 7 min | 3 tasks | 8 files |
+| 05-x-adapter | PLAN | 15 min | 3 tasks | 10 files |
 
 ## Stopped At
 
-Completed 04-wechat-oa-adapter PLAN.md (all 3 tasks, 48 tests)
+Completed 05-x-adapter PLAN.md (all 3 tasks, 41 tests)
