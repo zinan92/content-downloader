@@ -8,6 +8,7 @@ from content_downloader.router import (
     UnsupportedPlatformError,
 )
 from content_downloader.adapters.fixture import FixtureAdapter
+from content_downloader.adapters.douyin.adapter import DouyinAdapter
 from content_downloader.adapters.stub import StubAdapter
 
 
@@ -87,9 +88,9 @@ class TestGetAdapter:
         adapter = get_adapter("https://fixture.test/video/abc123")
         assert isinstance(adapter, FixtureAdapter)
 
-    def test_douyin_returns_stub_adapter(self):
+    def test_douyin_returns_douyin_adapter(self):
         adapter = get_adapter("https://www.douyin.com/video/12345")
-        assert isinstance(adapter, StubAdapter)
+        assert isinstance(adapter, DouyinAdapter)
         assert adapter.platform == "douyin"
 
     def test_xhs_returns_stub_adapter(self):

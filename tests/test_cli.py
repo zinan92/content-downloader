@@ -115,9 +115,10 @@ class TestDownloadCommand:
         assert result.exit_code != 0
 
     def test_stub_adapter_exits_gracefully(self, runner, tmp_path):
+        # Use XHS which is still a stub adapter (Phase 2 only adds Douyin)
         result = runner.invoke(
             main,
-            ["download", "https://www.douyin.com/video/12345", "--output-dir", str(tmp_path)],
+            ["download", "https://www.xiaohongshu.com/explore/abc123", "--output-dir", str(tmp_path)],
         )
         assert result.exit_code == 2  # NotImplemented exits with code 2
 
