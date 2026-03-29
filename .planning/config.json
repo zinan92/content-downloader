@@ -1,0 +1,14 @@
+{
+  "model_profile": "balanced",
+  "commit_docs": true,
+  "search_gitignored": false,
+  "branching_strategy": "none",
+  "research": false,
+  "plan_checker": true,
+  "verifier": true,
+  "nyquist_validation": true,
+  "parallelization": true,
+  "text_mode": false,
+  "sub_repos": [],
+  "resolve_model_ids": false
+}
