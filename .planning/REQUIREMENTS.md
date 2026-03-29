@@ -7,13 +7,13 @@
 
 ### Core
 
-- [ ] **CORE-01**: CLI 接收单条 URL，自动识别平台（douyin/xhs/wechat-oa/x），路由到对应 adapter
-- [ ] **CORE-02**: CLI 接收 profile/user URL，批量下载创作者内容
-- [ ] **CORE-03**: 批量模式支持 `--limit N`（最近 N 条）和 `--since DATE`（增量下载）
-- [ ] **CORE-04**: 输出目录结构标准化 — `output/{platform}/{author_id}/{content_id}/`
-- [ ] **CORE-05**: 每个 content_id 目录包含 `media/` + `metadata.json` + `content_item.json`
-- [ ] **CORE-06**: 全局 `manifest.jsonl` — append-only，一行一个 ContentItem 摘要
-- [ ] **CORE-07**: ContentItem 数据模型统一 — platform, content_id, content_type, title, description, author_id, author_name, publish_time, source_url, media_files, likes, comments, shares, collects, views
+- [x] **CORE-01**: CLI 接收单条 URL，自动识别平台（douyin/xhs/wechat-oa/x），路由到对应 adapter
+- [x] **CORE-02**: CLI 接收 profile/user URL，批量下载创作者内容
+- [x] **CORE-03**: 批量模式支持 `--limit N`（最近 N 条）和 `--since DATE`（增量下载）
+- [x] **CORE-04**: 输出目录结构标准化 — `output/{platform}/{author_id}/{content_id}/`
+- [x] **CORE-05**: 每个 content_id 目录包含 `media/` + `metadata.json` + `content_item.json`
+- [x] **CORE-06**: 全局 `manifest.jsonl` — append-only，一行一个 ContentItem 摘要
+- [x] **CORE-07**: ContentItem 数据模型统一 — platform, content_id, content_type, title, description, author_id, author_name, publish_time, source_url, media_files, likes, comments, shares, collects, views
 
 ### Adapters
 
@@ -28,17 +28,17 @@
 
 ### Safety
 
-- [ ] **SAFE-01**: 所有 adapter 内置请求间隔（可配置，默认 1-3 秒随机）
-- [ ] **SAFE-02**: 不强制用户登录任何平台（Cookie 可选配置）
-- [ ] **SAFE-03**: 单条下载失败不影响批量任务其余条目 — 失败记录在 manifest 中
-- [ ] **SAFE-04**: 去重 — 已下载的 content_id 跳过（可 --force 强制）
+- [x] **SAFE-01**: 所有 adapter 内置请求间隔（可配置，默认 1-3 秒随机）
+- [x] **SAFE-02**: 不强制用户登录任何平台（Cookie 可选配置）
+- [x] **SAFE-03**: 单条下载失败不影响批量任务其余条目 — 失败记录在 manifest 中
+- [x] **SAFE-04**: 去重 — 已下载的 content_id 跳过（可 --force 强制）
 
 ### Testing
 
-- [ ] **TEST-01**: 每个 adapter 有 fixture 模式 — 离线可测，不需要真实网络
+- [x] **TEST-01**: 每个 adapter 有 fixture 模式 — 离线可测，不需要真实网络
 - [ ] **TEST-02**: URL 识别逻辑 100% 覆盖 — 每种 URL 格式有对应测试
 - [ ] **TEST-03**: ContentItem 序列化/反序列化测试 — JSON round-trip
-- [ ] **TEST-04**: manifest.jsonl 并发写入安全
+- [x] **TEST-04**: manifest.jsonl 并发写入安全
 
 ## v2 Requirements
 

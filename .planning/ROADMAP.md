@@ -7,7 +7,7 @@
 
 | Phase | Name | Requirements | Goal |
 |-------|------|-------------|------|
-| 1 | Scaffold + Core | CORE-01~07, TEST-01~04, SAFE-01~04 | CLI 骨架 + adapter 接口 + ContentItem 模型 + manifest + fixture adapter 跑通 |
+| 1 | 1/1 | Complete   | 2026-03-29 |
 | 2 | Douyin Adapter | ADAPT-01~03 | 移植 douyin-downloader-1 核心，真实抖音下载可用 |
 | 3 | XHS Adapter | ADAPT-04~06 | XHS-Downloader HTTP API 集成，小红书下载可用 |
 | 4 | WeChat OA Adapter | ADAPT-07 | 公众号文章 HTML + 图片下载可用 |
