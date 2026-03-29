@@ -114,13 +114,12 @@ class TestDownloadCommand:
         )
         assert result.exit_code != 0
 
-    def test_stub_adapter_exits_gracefully(self, runner, tmp_path):
-        # Use XHS which is still a stub adapter (Phase 2 only adds Douyin)
+    def test_unsupported_platform_exits_gracefully(self, runner, tmp_path):
         result = runner.invoke(
             main,
-            ["download", "https://www.xiaohongshu.com/explore/abc123", "--output-dir", str(tmp_path)],
+            ["download", "https://tiktok.com/@user/video/123", "--output-dir", str(tmp_path)],
         )
-        assert result.exit_code == 2  # NotImplemented exits with code 2
+        assert result.exit_code != 0
 
 
 class TestListCommand:

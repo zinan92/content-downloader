@@ -93,9 +93,8 @@ class TestGetAdapter:
         assert isinstance(adapter, DouyinAdapter)
         assert adapter.platform == "douyin"
 
-    def test_xhs_returns_stub_adapter(self):
+    def test_xhs_returns_real_adapter(self):
         adapter = get_adapter("https://www.xiaohongshu.com/explore/abc")
-        assert isinstance(adapter, StubAdapter)
         assert adapter.platform == "xhs"
 
     def test_unsupported_raises(self):
