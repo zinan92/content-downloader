@@ -16,6 +16,21 @@ from content_downloader.adapters.xhs.api_client import XHSAPIClient
 from content_downloader.adapters.xhs.mapper import note_to_content_item
 from content_downloader.models import ContentItem, DownloadError, DownloadResult
 
+
+class XHSDownloadError(RuntimeError):
+    """Exception raised by XHSAdapter on unrecoverable download failures.
+
+    Carries a :class:`~content_downloader.models.DownloadError` payload
+    with structured error information.
+
+    Attributes:
+        download_error: The structured DownloadError payload.
+    """
+
+    def __init__(self, download_error: DownloadError) -> None:
+        super().__init__(download_error.message)
+        self.download_error = download_error
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -96,24 +111,28 @@ class XHSAdapter:
         async with XHSAPIClient(base_url=self._base_url) as client:
             # 1. Health check
             if not await client.is_available():
-                raise _make_download_error(
-                    content_id="",
-                    source_url=url,
-                    error_type="service_unavailable",
-                    message=_SERVICE_UNAVAILABLE_MESSAGE,
-                    retryable=False,
+                raise XHSDownloadError(
+                    DownloadError(
+                        content_id="",
+                        source_url=url,
+                        error_type="service_unavailable",
+                        message=_SERVICE_UNAVAILABLE_MESSAGE,
+                        retryable=False,
+                    )
                 )
 
             # 2. Fetch note detail
             note_data = await client.get_note_detail(url)
 
         if not note_data:
-            raise _make_download_error(
-                content_id="",
-                source_url=url,
-                error_type="not_found",
-                message=f"XHS-Downloader returned empty response for URL: {url!r}",
-                retryable=False,
+            raise XHSDownloadError(
+                DownloadError(
+                    content_id="",
+                    source_url=url,
+                    error_type="not_found",
+                    message=f"XHS-Downloader returned empty response for URL: {url!r}",
+                    retryable=False,
+                )
             )
 
         return await self._save_note(note_data, url, output_dir)
@@ -244,23 +263,6 @@ class XHSAdapter:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_download_error(
-    content_id: str,
-    source_url: str,
-    error_type: str,
-    message: str,
-    retryable: bool,
-) -> DownloadError:
-    """Construct a DownloadError and return it (caller should raise it)."""
-    return DownloadError(
-        content_id=content_id,
-        source_url=source_url,
-        error_type=error_type,
-        message=message,
-        retryable=retryable,
-    )
 
 
 async def _download_file(
