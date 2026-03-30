@@ -237,6 +237,12 @@ class XHSAdapter:
                 except Exception as exc:
                     logger.warning("Failed to download %s: %s", url[:80], exc)
 
+        # Set cover_file to first downloaded image (not video)
+        for mf in media_files:
+            if not any(mf.endswith(ext) for ext in (".mp4", ".mov", ".webm")):
+                cover_file = mf
+                break
+
         # Write metadata.json (raw API response)
         metadata_path = content_dir / "metadata.json"
         metadata_path.write_text(

@@ -139,15 +139,14 @@ class XAdapter:
                     continue
                 dest = media_dir / src.name
                 src.rename(dest)
-                if src.suffix in (".jpg", ".jpeg", ".png", ".webp") and cover_file is None:
-                    # First image file becomes the cover
-                    cover_file = f"media/{dest.name}"
+                if src.suffix in (".jpg", ".jpeg", ".png", ".webp"):
+                    # All image files go into media_files
+                    media_files.append(f"media/{dest.name}")
+                    if cover_file is None:
+                        # First image file also becomes the cover
+                        cover_file = f"media/{dest.name}"
                 elif src.suffix in (".mp4", ".mkv", ".webm", ".mov"):
                     media_files.append(f"media/{dest.name}")
-                else:
-                    # Other files (thumbnails etc.)
-                    if cover_file is None and src.suffix in (".jpg", ".jpeg", ".png", ".webp"):
-                        cover_file = f"media/{dest.name}"
 
             # Clean up staging directory
             try:

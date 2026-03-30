@@ -213,15 +213,20 @@ class DouyinAdapter:
         cover_file: Optional[str] = None
 
         # Detect gallery vs video
-        if aweme_data.get("images") and isinstance(aweme_data["images"], list):
+        # Some gallery posts use "image_post_info" instead of "images"
+        gallery_items = _iter_gallery_items(aweme_data)
+        if gallery_items is not None:
             # Gallery: download each image
-            for idx, img_item in enumerate(aweme_data["images"]):
+            for idx, img_item in enumerate(gallery_items):
                 img_url = _pick_first_url(img_item)
                 if img_url:
                     filename = f"image_{idx + 1:03d}.jpg"
                     dest = media_dir / filename
                     await _download_file(client, img_url, dest)
                     media_files.append(f"media/{filename}")
+            # Set cover_file to first image for gallery posts
+            if media_files:
+                cover_file = media_files[0]
         else:
             # Video: extract no-watermark URL
             video_url = _build_no_watermark_url(aweme_data, client)
@@ -230,12 +235,13 @@ class DouyinAdapter:
                 await _download_file(client, video_url, video_dest)
                 media_files.append("media/video.mp4")
 
-        # Cover image
-        cover_url = _extract_cover_url(aweme_data)
-        if cover_url:
-            cover_dest = media_dir / "cover.jpg"
-            await _download_file(client, cover_url, cover_dest)
-            cover_file = "media/cover.jpg"
+        # Cover image (only download API cover for video posts; gallery uses first image)
+        if cover_file is None:
+            cover_url = _extract_cover_url(aweme_data)
+            if cover_url:
+                cover_dest = media_dir / "cover.jpg"
+                await _download_file(client, cover_url, cover_dest)
+                cover_file = "media/cover.jpg"
 
         # Write metadata.json
         metadata_path = content_dir / "metadata.json"
@@ -385,6 +391,29 @@ def _pick_first_url(item: Any) -> Optional[str]:
                     return u
     url = item.get("url")
     return url if url else None
+
+
+def _iter_gallery_items(aweme_data: Dict[str, Any]) -> Optional[List[Any]]:
+    """Extract gallery image items from aweme data.
+
+    Checks both ``image_post_info`` (newer API format) and ``images`` (older format).
+
+    Returns:
+        A non-empty list of image item dicts if this is a gallery post,
+        or None if it is not a gallery post.
+    """
+    image_post = aweme_data.get("image_post_info")
+    image_post_images = (
+        image_post.get("images") if isinstance(image_post, dict) else None
+    )
+    images = image_post_images or aweme_data.get("images")
+    if isinstance(images, list) and len(images) > 0:
+        return images
+    # Key present but empty list, or key present via image_post_info with empty images
+    # → this is a gallery post with no usable images, return empty list (not None)
+    if image_post is not None or aweme_data.get("images") is not None:
+        return []
+    return None
 
 
 def _extract_cover_url(aweme_data: Dict[str, Any]) -> Optional[str]:
