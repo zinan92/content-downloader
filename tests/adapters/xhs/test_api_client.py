@@ -153,20 +153,22 @@ async def test_is_available_returns_false_on_non_200():
 
 @pytest.mark.asyncio
 async def test_is_available_returns_false_on_connect_error():
-    """is_available returns False when sidecar is not reachable."""
+    """is_available returns False when sidecar is not reachable (both GET and POST fail)."""
     client = XHSAPIClient()
     client._client = AsyncMock()
     client._client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    client._client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
     assert await client.is_available() is False
 
 
 @pytest.mark.asyncio
 async def test_is_available_returns_false_on_timeout():
-    """is_available returns False on timeout."""
+    """is_available returns False on timeout (both GET and POST fail)."""
     client = XHSAPIClient()
     client._client = AsyncMock()
     client._client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+    client._client.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
     assert await client.is_available() is False
 

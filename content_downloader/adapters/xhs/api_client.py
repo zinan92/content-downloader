@@ -88,15 +88,27 @@ class XHSAPIClient:
     async def is_available(self) -> bool:
         """Return True if the XHS-Downloader sidecar is reachable.
 
-        Performs a lightweight GET / with a short timeout so the caller
-        doesn't wait long when the sidecar isn't running.
+        Tries GET / first, then POST /xhs/detail as fallback.
+        Accepts any successful connection (status < 500) as "available".
         """
         try:
             resp = await self._client.get(
                 self.base_url,
                 timeout=_HEALTH_TIMEOUT,
             )
-            return resp.status_code == 200
+            return resp.status_code < 500
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+
+        # Fallback: try the actual API endpoint
+        try:
+            resp = await self._client.post(
+                f"{self.base_url}/xhs/detail",
+                json={"url": "https://www.xiaohongshu.com/explore/test", "download": False},
+                timeout=_HEALTH_TIMEOUT,
+            )
+            # Even if it returns error data, the server is running
+            return resp.status_code < 500
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             logger.debug("XHS sidecar not available: %s", exc)
             return False

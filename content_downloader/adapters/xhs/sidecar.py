@@ -15,7 +15,7 @@ from content_downloader.adapters.xhs.api_client import XHSAPIClient
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PORT = 5556
-_STARTUP_TIMEOUT = 15  # seconds to wait for sidecar to become healthy
+_STARTUP_TIMEOUT = 30  # seconds to wait for sidecar to become healthy
 _HEALTH_POLL_INTERVAL = 1.0
 
 
