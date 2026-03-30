@@ -156,7 +156,7 @@ async def test_fetch_post_text_only_skips_download(tmp_path: Path) -> None:
 async def test_fetch_post_raises_on_real_error(tmp_path: Path) -> None:
     mock_proc = _make_mock_proc(
         returncode=1,
-        stderr=b"ERROR: Unsupported URL: https://bad.com/123",
+        stderr=b"ERROR: [twitter] 123: Unable to download JSON metadata: HTTP Error 403",
     )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_proc):

@@ -95,9 +95,11 @@ class XFetcher:
         # yt-dlp returns code 1 for text-only tweets — try to parse stderr
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace") if stderr else ""
-            # "No video could be found" = text-only tweet, not a fatal error
-            if "No video could be found" in stderr_text:
-                logger.info("Text-only tweet detected: %s", url)
+            # These errors mean the tweet has no native media — treat as text-only
+            # - "No video could be found" = text-only tweet
+            # - "Unsupported URL" = yt-dlp followed an embedded link in the tweet
+            if "No video could be found" in stderr_text or "Unsupported URL" in stderr_text:
+                logger.info("Text-only tweet (or embedded link only): %s", url)
                 return self._build_text_only_info(url)
             raise RuntimeError(
                 f"yt-dlp metadata fetch failed (code {proc.returncode}).\n"
