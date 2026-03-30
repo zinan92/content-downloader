@@ -58,48 +58,34 @@ class XHSSidecar:
         except Exception:
             return False
 
-    def _is_installed(self) -> bool:
-        """Check if XHS-Downloader CLI is available."""
-        # Try importing the package
-        try:
-            result = subprocess.run(
-                [sys.executable, "-c", "import source; print('ok')"],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result.returncode == 0:
-                return True
-        except Exception:
-            pass
+    def _get_install_dir(self) -> Path:
+        return Path.home() / ".content-downloader" / "XHS-Downloader"
 
-        # Check if xhs-downloader command exists
-        return shutil.which("xhs-downloader") is not None
+    def _is_installed(self) -> bool:
+        """Check if XHS-Downloader is available (cloned repo with main.py)."""
+        main_py = self._get_install_dir() / "main.py"
+        return main_py.exists()
 
     def _install(self) -> None:
-        """Install XHS-Downloader via pip."""
-        logger.info("Running: pip install xhs-downloader")
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "xhs-downloader", "-q"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            logger.warning("pip install failed: %s", result.stderr)
-            # Try cloning from GitHub as fallback
-            self._install_from_github()
-
-    def _install_from_github(self) -> None:
-        """Clone and install XHS-Downloader from GitHub."""
-        install_dir = Path.home() / ".content-downloader" / "XHS-Downloader"
+        """Clone XHS-Downloader from GitHub and install its dependencies."""
+        install_dir = self._get_install_dir()
         if not install_dir.exists():
             logger.info("Cloning XHS-Downloader from GitHub...")
-            subprocess.run(
+            install_dir.parent.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(
                 ["git", "clone", "--depth", "1",
                  "https://github.com/JoeanAmier/XHS-Downloader.git",
                  str(install_dir)],
                 capture_output=True, text=True, timeout=120,
             )
+            if result.returncode != 0:
+                logger.error("git clone failed: %s", result.stderr)
+                return
+
         # Install requirements
         req_file = install_dir / "requirements.txt"
         if req_file.exists():
+            logger.info("Installing XHS-Downloader dependencies...")
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-r", str(req_file), "-q"],
                 capture_output=True, text=True, timeout=120,
@@ -107,30 +93,19 @@ class XHSSidecar:
 
     def _start(self) -> None:
         """Start XHS-Downloader in API mode as a background process."""
-        # Try 1: installed package
-        try:
-            self._process = subprocess.Popen(
-                [sys.executable, "-m", "xhs_downloader", "api"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return
-        except Exception:
-            pass
-
-        # Try 2: cloned repo
-        repo_dir = Path.home() / ".content-downloader" / "XHS-Downloader"
+        repo_dir = self._get_install_dir()
         main_py = repo_dir / "main.py"
-        if main_py.exists():
-            self._process = subprocess.Popen(
-                [sys.executable, str(main_py), "api"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=str(repo_dir),
-            )
+        if not main_py.exists():
+            logger.error("Cannot start XHS-Downloader — main.py not found at %s", main_py)
             return
 
-        logger.error("Cannot start XHS-Downloader — not found")
+        logger.info("Starting XHS-Downloader API at %s ...", self._base_url)
+        self._process = subprocess.Popen(
+            [sys.executable, str(main_py), "api"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=str(repo_dir),
+        )
 
     async def _wait_for_healthy(self) -> bool:
         """Poll until sidecar is healthy or timeout."""
