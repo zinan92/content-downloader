@@ -52,30 +52,69 @@ class XFetcher:
     async def fetch_post(self, url: str, output_dir: Path) -> "dict[str, Any]":
         """Download a tweet's media and return its yt-dlp info dict.
 
-        Runs yt-dlp with --write-info-json --write-thumbnail --no-playlist
-        to download media files and a .info.json metadata file.
+        Two-phase approach:
+        1. --dump-json to get metadata (works for all tweets, even text-only)
+        2. If tweet has media, download it with --write-thumbnail
 
         Args:
             url: The tweet URL (x.com or twitter.com).
             output_dir: Directory where yt-dlp output files are written.
-                        Media files go into output_dir/media/.
 
         Returns:
-            Parsed dict from the .info.json file produced by yt-dlp.
+            Parsed dict from yt-dlp's JSON output.
 
         Raises:
-            RuntimeError: If yt-dlp exits with a non-zero return code.
-            FileNotFoundError: If no .info.json file is found after yt-dlp
-                               completes (text-only tweets produce no info.json).
+            RuntimeError: If yt-dlp fails to fetch metadata.
         """
         media_dir = output_dir / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
 
-        output_template = str(media_dir / "%(id)s.%(ext)s")
+        # Phase 1: Get metadata (works for all tweets)
+        info = await self._fetch_metadata(url)
 
+        # Phase 2: Download media if available
+        has_media = info.get("url") or info.get("formats")
+        if has_media:
+            await self._download_media(url, media_dir)
+
+        return info
+
+    async def _fetch_metadata(self, url: str) -> "dict[str, Any]":
+        """Use --dump-json to get tweet metadata without downloading."""
         proc = await asyncio.create_subprocess_exec(
             "yt-dlp",
-            "--write-info-json",
+            "--dump-json",
+            "--no-playlist",
+            "--no-warnings",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        # yt-dlp returns code 1 for text-only tweets — try to parse stderr
+        if proc.returncode != 0:
+            stderr_text = stderr.decode(errors="replace") if stderr else ""
+            # "No video could be found" = text-only tweet, not a fatal error
+            if "No video could be found" in stderr_text:
+                logger.info("Text-only tweet detected: %s", url)
+                return self._build_text_only_info(url)
+            raise RuntimeError(
+                f"yt-dlp metadata fetch failed (code {proc.returncode}).\n"
+                f"URL: {url!r}\nstderr: {stderr_text}"
+            )
+
+        stdout_text = stdout.decode(errors="replace").strip()
+        if not stdout_text:
+            return self._build_text_only_info(url)
+
+        return json.loads(stdout_text)
+
+    async def _download_media(self, url: str, media_dir: Path) -> None:
+        """Download media files using yt-dlp."""
+        output_template = str(media_dir / "%(id)s.%(ext)s")
+        proc = await asyncio.create_subprocess_exec(
+            "yt-dlp",
             "--write-thumbnail",
             "--no-playlist",
             "--no-warnings",
@@ -85,27 +124,32 @@ class XFetcher:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-
         stdout, stderr = await proc.communicate()
-
         if stdout:
-            logger.debug("yt-dlp stdout: %s", stdout.decode(errors="replace"))
+            logger.debug("yt-dlp download stdout: %s", stdout.decode(errors="replace"))
         if stderr:
-            logger.debug("yt-dlp stderr: %s", stderr.decode(errors="replace"))
+            logger.debug("yt-dlp download stderr: %s", stderr.decode(errors="replace"))
 
-        if proc.returncode != 0:
-            stderr_text = stderr.decode(errors="replace") if stderr else ""
-            raise RuntimeError(
-                f"yt-dlp exited with code {proc.returncode}.\n"
-                f"URL: {url!r}\n"
-                f"stderr: {stderr_text}"
-            )
-
-        info_json_path = _find_info_json(media_dir)
-        if info_json_path is None:
-            raise FileNotFoundError(
-                f"yt-dlp produced no .info.json file in {media_dir}. "
-                f"The tweet may be text-only or was unavailable."
-            )
-
-        return json.loads(info_json_path.read_text(encoding="utf-8"))
+    @staticmethod
+    def _build_text_only_info(url: str) -> "dict[str, Any]":
+        """Build a minimal info dict for text-only tweets."""
+        # Extract tweet ID from URL
+        tweet_id = ""
+        for part in url.rstrip("/").split("/"):
+            if part.isdigit():
+                tweet_id = part
+                break
+        return {
+            "id": tweet_id,
+            "title": "",
+            "description": "",
+            "uploader": "",
+            "uploader_id": "",
+            "timestamp": None,
+            "like_count": None,
+            "repost_count": None,
+            "comment_count": None,
+            "view_count": None,
+            "webpage_url": url,
+            "_text_only": True,
+        }
