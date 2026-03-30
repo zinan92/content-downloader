@@ -264,6 +264,14 @@ class XHSAdapter:
             encoding="utf-8",
         )
 
+        # Write text.txt — standalone readable text file
+        text_parts = [item.title, item.description]
+        text_content = "\n\n".join(p for p in text_parts if p)
+        if text_content:
+            (content_dir / "text.txt").write_text(
+                text_content, encoding="utf-8",
+            )
+
         return item
 
 

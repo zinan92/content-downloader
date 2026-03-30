@@ -198,6 +198,13 @@ class WeChatOAAdapter:
             encoding="utf-8",
         )
 
+        # Write text.txt — article title for quick reference
+        # (full article text is in media/article.html)
+        if item.title:
+            (content_dir / "text.txt").write_text(
+                item.title, encoding="utf-8",
+            )
+
         return item
 
     async def download_profile(

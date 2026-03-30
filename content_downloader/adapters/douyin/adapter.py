@@ -264,6 +264,13 @@ class DouyinAdapter:
             encoding="utf-8",
         )
 
+        # Write text.txt — standalone readable text file
+        text_content = item.description or item.title or ""
+        if text_content:
+            (content_dir / "text.txt").write_text(
+                text_content, encoding="utf-8",
+            )
+
         return item
 
     async def download_profile(
