@@ -40,10 +40,17 @@ def _extract_aweme_id(url: str) -> Optional[str]:
 
 
 def _extract_sec_uid(url: str) -> Optional[str]:
-    """Extract sec_uid from a douyin.com/user/... URL."""
+    """Extract sec_uid from a douyin.com/user/... URL.
+
+    Returns None for pseudo-paths like /user/self which are not real sec_uids.
+    """
     m = _USER_URL_RE.search(url)
     if m:
-        return m.group(1)
+        uid = m.group(1)
+        # /user/self is the logged-in user's own profile — not a real sec_uid
+        if uid.lower() == "self":
+            return None
+        return uid
     return None
 
 

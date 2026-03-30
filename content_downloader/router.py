@@ -30,6 +30,8 @@ _URL_PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
     # Douyin
     ("douyin", "single", re.compile(r"https?://(?:www\.)?douyin\.com/video/\S+")),
     ("douyin", "single", re.compile(r"https?://v\.douyin\.com/\S+")),
+    # /user/self?modal_id=xxx → treat as single video (modal_id has the aweme_id)
+    ("douyin", "single", re.compile(r"https?://(?:www\.)?douyin\.com/user/self\?.*modal_id=\d+")),
     ("douyin", "profile", re.compile(r"https?://(?:www\.)?douyin\.com/user/\S+")),
     # Xiaohongshu (XHS)
     ("xhs", "single", re.compile(r"https?://(?:www\.)?xiaohongshu\.com/explore/\S+")),
