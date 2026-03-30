@@ -7,7 +7,8 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-303_passed-brightgreen.svg)](#)
 [![Coverage](https://img.shields.io/badge/coverage-85%25-yellowgreen.svg)](#)
-[![License](https://img.shields.io/badge/license-Private-red.svg)](#)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/zinan92/content-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/zinan92/content-downloader/actions/workflows/ci.yml)
 
 </div>
 
@@ -317,4 +318,4 @@ with open("output/manifest.jsonl") as f:
 
 ## License
 
-Private -- Content Pipeline 内部工具。
+MIT License. See [LICENSE](LICENSE) for details.

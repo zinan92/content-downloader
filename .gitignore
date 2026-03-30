@@ -37,6 +37,7 @@ output/
 config.yaml
 config.yml
 cookies.txt
+cookies.json
 
 # Misc
 *.log
