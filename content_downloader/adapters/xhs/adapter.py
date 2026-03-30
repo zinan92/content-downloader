@@ -14,6 +14,7 @@ import httpx
 
 from content_downloader.adapters.xhs.api_client import XHSAPIClient
 from content_downloader.adapters.xhs.mapper import note_to_content_item
+from content_downloader.adapters.xhs.sidecar import XHSSidecar
 from content_downloader.models import ContentItem, DownloadError, DownloadResult
 
 
@@ -81,6 +82,7 @@ class XHSAdapter:
 
     def __init__(self, base_url: str = "http://127.0.0.1:5556") -> None:
         self._base_url = base_url
+        self._sidecar = XHSSidecar(base_url=base_url)
 
     # ------------------------------------------------------------------
     # PlatformAdapter protocol
@@ -109,17 +111,23 @@ class XHSAdapter:
                            or the API returns no data.
         """
         async with XHSAPIClient(base_url=self._base_url) as client:
-            # 1. Health check
+            # 1. Ensure sidecar is running (auto-install + auto-start)
             if not await client.is_available():
-                raise XHSDownloadError(
-                    DownloadError(
-                        content_id="",
-                        source_url=url,
-                        error_type="service_unavailable",
-                        message=_SERVICE_UNAVAILABLE_MESSAGE,
-                        retryable=False,
+                logger.info("XHS-Downloader not running, attempting auto-start...")
+                if not await self._sidecar.ensure_running():
+                    raise XHSDownloadError(
+                        DownloadError(
+                            content_id="",
+                            source_url=url,
+                            error_type="service_unavailable",
+                            message=(
+                                "Failed to auto-start XHS-Downloader.\n"
+                                "Manual install: pip install xhs-downloader\n"
+                                "Then: python -m xhs_downloader api"
+                            ),
+                            retryable=False,
+                        )
                     )
-                )
 
             # 2. Fetch note detail
             note_data = await client.get_note_detail(url)

@@ -208,7 +208,7 @@ async def test_download_single_video_file_written(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_download_single_sidecar_unavailable_raises(tmp_path: Path):
-    """download_single raises DownloadError when sidecar is not running."""
+    """download_single raises DownloadError when sidecar cannot be started."""
     mock_client = _make_api_client_mock(is_available=False)
 
     with patch(
@@ -216,16 +216,19 @@ async def test_download_single_sidecar_unavailable_raises(tmp_path: Path):
         return_value=mock_client,
     ):
         adapter = XHSAdapter()
-        with pytest.raises(XHSDownloadError) as exc_info:
-            await adapter.download_single(
-                "https://www.xiaohongshu.com/explore/abc",
-                tmp_path,
-            )
+        # Mock sidecar auto-start also failing
+        with patch.object(
+            adapter._sidecar, "ensure_running", new_callable=AsyncMock, return_value=False,
+        ):
+            with pytest.raises(XHSDownloadError) as exc_info:
+                await adapter.download_single(
+                    "https://www.xiaohongshu.com/explore/abc",
+                    tmp_path,
+                )
 
     err = exc_info.value.download_error
     assert err.error_type == "service_unavailable"
     assert "XHS-Downloader" in err.message
-    assert "python main.py api" in err.message
     assert err.retryable is False
 
 

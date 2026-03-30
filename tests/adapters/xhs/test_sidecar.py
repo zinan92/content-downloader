@@ -1,8 +1,8 @@
-"""Unit tests for XHSSidecar health check and startup guidance."""
+"""Unit tests for XHSSidecar auto-install, auto-start, and health check."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
@@ -10,73 +10,75 @@ from content_downloader.adapters.xhs.sidecar import XHSSidecar
 
 
 @pytest.mark.asyncio
-async def test_check_health_returns_true_when_available():
-    """check_health returns True when the sidecar is reachable."""
+async def test_ensure_running_when_already_healthy():
+    """If sidecar is already running, ensure_running returns True immediately."""
     sidecar = XHSSidecar()
-    with patch(
-        "content_downloader.adapters.xhs.sidecar.XHSAPIClient"
-    ) as MockClient:
-        mock_instance = AsyncMock()
-        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-        mock_instance.__aexit__ = AsyncMock(return_value=False)
-        mock_instance.is_available = AsyncMock(return_value=True)
-        MockClient.return_value = mock_instance
-
-        result = await sidecar.check_health()
-
+    with patch.object(sidecar, "_check_health", new_callable=AsyncMock, return_value=True):
+        result = await sidecar.ensure_running()
     assert result is True
 
 
 @pytest.mark.asyncio
-async def test_check_health_returns_false_when_not_available():
-    """check_health returns False when the sidecar is not reachable."""
+async def test_ensure_running_auto_starts():
+    """If sidecar is not running, ensure_running installs and starts it."""
     sidecar = XHSSidecar()
-    with patch(
-        "content_downloader.adapters.xhs.sidecar.XHSAPIClient"
-    ) as MockClient:
-        mock_instance = AsyncMock()
-        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-        mock_instance.__aexit__ = AsyncMock(return_value=False)
-        mock_instance.is_available = AsyncMock(return_value=False)
-        MockClient.return_value = mock_instance
 
-        result = await sidecar.check_health()
+    health_calls = [False, True]  # first check fails, then succeeds after start
 
+    async def mock_health():
+        return health_calls.pop(0) if health_calls else True
+
+    with patch.object(sidecar, "_check_health", side_effect=mock_health), \
+         patch.object(sidecar, "_is_installed", return_value=True), \
+         patch.object(sidecar, "_start"), \
+         patch.object(sidecar, "_wait_for_healthy", new_callable=AsyncMock, return_value=True):
+        result = await sidecar.ensure_running()
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_running_installs_if_missing():
+    """If XHS-Downloader is not installed, ensure_running installs it first."""
+    sidecar = XHSSidecar()
+
+    with patch.object(sidecar, "_check_health", new_callable=AsyncMock, return_value=False), \
+         patch.object(sidecar, "_is_installed", return_value=False), \
+         patch.object(sidecar, "_install") as mock_install, \
+         patch.object(sidecar, "_start"), \
+         patch.object(sidecar, "_wait_for_healthy", new_callable=AsyncMock, return_value=True):
+        result = await sidecar.ensure_running()
+
+    assert result is True
+    mock_install.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_running_returns_false_on_timeout():
+    """If sidecar fails to start, ensure_running returns False."""
+    sidecar = XHSSidecar()
+
+    with patch.object(sidecar, "_check_health", new_callable=AsyncMock, return_value=False), \
+         patch.object(sidecar, "_is_installed", return_value=True), \
+         patch.object(sidecar, "_start"), \
+         patch.object(sidecar, "_wait_for_healthy", new_callable=AsyncMock, return_value=False):
+        result = await sidecar.ensure_running()
     assert result is False
 
 
-def test_get_start_instructions_contains_key_info():
-    """get_start_instructions returns guidance mentioning the API port."""
+def test_stop_terminates_process():
+    """stop() terminates the sidecar process if running."""
     sidecar = XHSSidecar()
-    instructions = sidecar.get_start_instructions()
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # still running
+    sidecar._process = mock_proc
 
-    assert "5556" in instructions
-    assert "main.py" in instructions
-    assert "api" in instructions
+    sidecar.stop()
+
+    mock_proc.terminate.assert_called_once()
+    assert sidecar._process is None
 
 
-def test_get_start_instructions_is_human_readable():
-    """get_start_instructions is a non-empty string with multiple lines."""
+def test_stop_noop_when_no_process():
+    """stop() does nothing if no process was started."""
     sidecar = XHSSidecar()
-    instructions = sidecar.get_start_instructions()
-    assert isinstance(instructions, str)
-    assert len(instructions) > 20
-    assert "\n" in instructions  # multiline
-
-
-def test_custom_base_url_passed_to_client():
-    """XHSSidecar forwards custom base_url to XHSAPIClient."""
-    sidecar = XHSSidecar(base_url="http://127.0.0.1:9999")
-    with patch(
-        "content_downloader.adapters.xhs.sidecar.XHSAPIClient"
-    ) as MockClient:
-        mock_instance = AsyncMock()
-        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-        mock_instance.__aexit__ = AsyncMock(return_value=False)
-        mock_instance.is_available = AsyncMock(return_value=True)
-        MockClient.return_value = mock_instance
-
-        import asyncio
-        asyncio.run(sidecar.check_health())
-
-    MockClient.assert_called_once_with(base_url="http://127.0.0.1:9999")
+    sidecar.stop()  # should not raise
