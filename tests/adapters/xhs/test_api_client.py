@@ -58,8 +58,8 @@ async def test_get_note_detail_gallery():
     assert payload["download"] is False
     assert payload["skip"] is False
 
-    assert result["note_id"] == "abc123gallery"
-    assert result["type"] == "normal"
+    assert result["data"]["作品ID"] == "abc123gallery"
+    assert result["data"]["作品类型"] == "图文"
 
 
 @pytest.mark.asyncio
@@ -74,8 +74,8 @@ async def test_get_note_detail_video():
 
     result = await client.get_note_detail("https://www.xiaohongshu.com/explore/xyz789video")
 
-    assert result["note_id"] == "xyz789video"
-    assert result["type"] == "video"
+    assert result["data"]["作品ID"] == "xyz789video"
+    assert result["data"]["作品类型"] == "视频"
 
 
 @pytest.mark.asyncio

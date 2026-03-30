@@ -13,7 +13,12 @@ from urllib.parse import urlparse
 import httpx
 
 from content_downloader.adapters.xhs.api_client import XHSAPIClient
-from content_downloader.adapters.xhs.mapper import note_to_content_item
+from content_downloader.adapters.xhs.mapper import (
+    extract_author_id,
+    extract_download_urls,
+    extract_note_id,
+    note_to_content_item,
+)
 from content_downloader.adapters.xhs.sidecar import XHSSidecar
 from content_downloader.models import ContentItem, DownloadError, DownloadResult
 
@@ -198,16 +203,11 @@ class XHSAdapter:
     ) -> ContentItem:
         """Download media files and write all output files for a single note.
 
-        Args:
-            note_data: Raw dict from the XHS-Downloader ``/xhs/detail`` endpoint.
-            source_url: Original URL (used as fallback for ``source_url`` field).
-            output_dir: Root output directory.
-
-        Returns:
-            Populated :class:`~content_downloader.models.ContentItem`.
+        XHS-Downloader returns ``{"data": {中文字段..., "下载地址": [urls]}}``
         """
-        note_id = str(note_data.get("note_id") or note_data.get("id") or "unknown")
-        author_id = str(note_data.get("user_id") or note_data.get("author_id") or "unknown")
+        note_id = extract_note_id(note_data)
+        author_id = extract_author_id(note_data)
+        download_urls = extract_download_urls(note_data)
 
         content_dir = output_dir / "xhs" / author_id / note_id
         media_dir = content_dir / "media"
@@ -216,33 +216,26 @@ class XHSAdapter:
         media_files: list[str] = []
         cover_file: Optional[str] = None
 
-        note_type = note_data.get("type", "normal")
+        # Download all media from 下载地址 list
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http:
+            for idx, url in enumerate(download_urls):
+                if not url:
+                    continue
+                # Detect file type from URL
+                if any(ext in url for ext in [".mp4", ".mov", ".webm"]):
+                    filename = f"video_{idx + 1:02d}.mp4" if len(download_urls) > 1 else "video.mp4"
+                else:
+                    filename = f"img_{idx + 1:02d}.jpg"
 
-        async with XHSAPIClient(base_url=self._base_url) as dl_client:
-            if note_type == "video":
-                # Video note: download video file
-                video_url = note_data.get("video_url") or note_data.get("video")
-                if video_url:
-                    dest = media_dir / "video.mp4"
-                    await _download_file(dl_client, video_url, dest)
-                    media_files.append("media/video.mp4")
-            else:
-                # Image gallery note: download each image
-                image_list = note_data.get("image_list") or []
-                for idx, img_item in enumerate(image_list):
-                    img_url = _extract_image_url(img_item)
-                    if img_url:
-                        filename = f"img_{idx + 1:02d}.jpg"
-                        dest = media_dir / filename
-                        await _download_file(dl_client, img_url, dest)
-                        media_files.append(f"media/{filename}")
-
-            # Cover image
-            cover_url = _extract_cover_url(note_data)
-            if cover_url:
-                cover_dest = media_dir / "cover.jpg"
-                await _download_file(dl_client, cover_url, cover_dest)
-                cover_file = "media/cover.jpg"
+                dest = media_dir / filename
+                try:
+                    resp = await http.get(url)
+                    resp.raise_for_status()
+                    dest.write_bytes(resp.content)
+                    media_files.append(f"media/{filename}")
+                    logger.info("Downloaded %s -> %s", url[:80], dest.name)
+                except Exception as exc:
+                    logger.warning("Failed to download %s: %s", url[:80], exc)
 
         # Write metadata.json (raw API response)
         metadata_path = content_dir / "metadata.json"
@@ -268,57 +261,3 @@ class XHSAdapter:
         return item
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-async def _download_file(
-    client: XHSAPIClient,
-    url: str,
-    dest: Path,
-) -> None:
-    """Download a file from *url* to *dest* using the provided client."""
-    try:
-        response = await client._client.get(url)
-        response.raise_for_status()
-        dest.write_bytes(response.content)
-    except Exception as exc:
-        logger.warning("Failed to download %s -> %s: %s", url, dest, exc)
-        raise
-
-
-def _extract_image_url(img_item: Any) -> Optional[str]:
-    """Extract the best URL from an XHS image item dict.
-
-    XHS-Downloader may return images as dicts with ``url`` or ``url_list``
-    fields, or as plain URL strings.
-    """
-    if isinstance(img_item, str):
-        return img_item if img_item else None
-    if not isinstance(img_item, dict):
-        return None
-    # Prefer url_list (highest quality)
-    url_list = img_item.get("url_list") or img_item.get("urls") or []
-    if isinstance(url_list, list):
-        for u in url_list:
-            if u:
-                return u
-    # Fallback to single url field
-    url = img_item.get("url") or img_item.get("original_url")
-    return url if url else None
-
-
-def _extract_cover_url(note_data: dict[str, Any]) -> Optional[str]:
-    """Extract cover/thumbnail URL from the note data dict."""
-    # Direct cover URL fields
-    for key in ("cover_url", "cover", "thumbnail"):
-        val = note_data.get(key)
-        if isinstance(val, str) and val:
-            return val
-        if isinstance(val, dict):
-            url_list = val.get("url_list") or []
-            for u in url_list:
-                if u:
-                    return u
-    return None

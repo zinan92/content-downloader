@@ -37,18 +37,25 @@ def _make_api_client_mock(
     mock_instance.is_available = AsyncMock(return_value=is_available)
     mock_instance.get_note_detail = AsyncMock(return_value=note_data or {})
 
-    # Stub _client.get for media downloads
-    mock_dl_response = MagicMock(spec=httpx.Response)
-    mock_dl_response.content = download_bytes
-    mock_dl_response.raise_for_status = MagicMock()
-    mock_instance._client = AsyncMock()
-    mock_instance._client.get = AsyncMock(return_value=mock_dl_response)
-
     # Make it work as async context manager
     mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
     mock_instance.__aexit__ = AsyncMock(return_value=False)
 
     return mock_instance
+
+
+def _make_httpx_client_mock(download_bytes: bytes = _FAKE_IMAGE_BYTES) -> MagicMock:
+    """Build a mock httpx.AsyncClient for media downloads."""
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.content = download_bytes
+    mock_response.raise_for_status = MagicMock()
+
+    mock_http = AsyncMock()
+    mock_http.get = AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    return mock_http
 
 
 # ---------------------------------------------------------------------------
@@ -93,11 +100,10 @@ async def test_download_single_gallery(tmp_path: Path):
     """download_single creates img files + metadata + content_item for gallery note."""
     fixture = _load_fixture("note_gallery.json")
     mock_client = _make_api_client_mock(note_data=fixture, is_available=True)
+    mock_http = _make_httpx_client_mock(_FAKE_IMAGE_BYTES)
 
-    with patch(
-        "content_downloader.adapters.xhs.adapter.XHSAPIClient",
-        return_value=mock_client,
-    ):
+    with patch("content_downloader.adapters.xhs.adapter.XHSAPIClient", return_value=mock_client), \
+         patch("content_downloader.adapters.xhs.adapter.httpx.AsyncClient", return_value=mock_http):
         adapter = XHSAdapter()
         item = await adapter.download_single(
             "https://www.xiaohongshu.com/explore/abc123gallery",
@@ -110,15 +116,10 @@ async def test_download_single_gallery(tmp_path: Path):
     assert item.author_id == "user456"
     assert item.likes == 1024
 
-    # Verify output directory structure
     content_dir = tmp_path / "xhs" / "user456" / "abc123gallery"
-    assert content_dir.is_dir()
-
-    # metadata.json and content_item.json should exist
     assert (content_dir / "metadata.json").exists()
     assert (content_dir / "content_item.json").exists()
 
-    # Verify content_item.json is valid
     saved = json.loads((content_dir / "content_item.json").read_text())
     assert saved["platform"] == "xhs"
     assert saved["content_id"] == "abc123gallery"
@@ -126,24 +127,21 @@ async def test_download_single_gallery(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_download_single_gallery_downloads_images(tmp_path: Path):
-    """download_single downloads all images from image_list."""
+    """download_single downloads all images from 下载地址 list."""
     fixture = _load_fixture("note_gallery.json")
-    # fixture has 3 images
-    mock_client = _make_api_client_mock(note_data=fixture, is_available=True, download_bytes=_FAKE_IMAGE_BYTES)
+    mock_client = _make_api_client_mock(note_data=fixture, is_available=True)
+    mock_http = _make_httpx_client_mock(_FAKE_IMAGE_BYTES)
 
-    with patch(
-        "content_downloader.adapters.xhs.adapter.XHSAPIClient",
-        return_value=mock_client,
-    ):
+    with patch("content_downloader.adapters.xhs.adapter.XHSAPIClient", return_value=mock_client), \
+         patch("content_downloader.adapters.xhs.adapter.httpx.AsyncClient", return_value=mock_http):
         adapter = XHSAdapter()
         item = await adapter.download_single(
             "https://www.xiaohongshu.com/explore/abc123gallery",
             tmp_path,
         )
 
-    media_dir = tmp_path / "xhs" / "user456" / "abc123gallery" / "media"
-    # 3 images + 1 cover = 4 downloads expected
-    assert any(media_dir.glob("img_*.jpg")) or len(item.media_files) > 0
+    # fixture has 3 images in 下载地址
+    assert len(item.media_files) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -155,12 +153,11 @@ async def test_download_single_gallery_downloads_images(tmp_path: Path):
 async def test_download_single_video(tmp_path: Path):
     """download_single creates video.mp4 + metadata + content_item for video note."""
     fixture = _load_fixture("note_video.json")
-    mock_client = _make_api_client_mock(note_data=fixture, is_available=True, download_bytes=_FAKE_VIDEO_BYTES)
+    mock_client = _make_api_client_mock(note_data=fixture, is_available=True)
+    mock_http = _make_httpx_client_mock(_FAKE_VIDEO_BYTES)
 
-    with patch(
-        "content_downloader.adapters.xhs.adapter.XHSAPIClient",
-        return_value=mock_client,
-    ):
+    with patch("content_downloader.adapters.xhs.adapter.XHSAPIClient", return_value=mock_client), \
+         patch("content_downloader.adapters.xhs.adapter.httpx.AsyncClient", return_value=mock_http):
         adapter = XHSAdapter()
         item = await adapter.download_single(
             "https://www.xiaohongshu.com/explore/xyz789video",
@@ -175,8 +172,6 @@ async def test_download_single_video(tmp_path: Path):
     content_dir = tmp_path / "xhs" / "fitnessguru99" / "xyz789video"
     assert (content_dir / "metadata.json").exists()
     assert (content_dir / "content_item.json").exists()
-
-    # media_files should include video.mp4
     assert "media/video.mp4" in item.media_files
 
 
@@ -184,12 +179,11 @@ async def test_download_single_video(tmp_path: Path):
 async def test_download_single_video_file_written(tmp_path: Path):
     """download_single writes actual bytes for video.mp4."""
     fixture = _load_fixture("note_video.json")
-    mock_client = _make_api_client_mock(note_data=fixture, is_available=True, download_bytes=_FAKE_VIDEO_BYTES)
+    mock_client = _make_api_client_mock(note_data=fixture, is_available=True)
+    mock_http = _make_httpx_client_mock(_FAKE_VIDEO_BYTES)
 
-    with patch(
-        "content_downloader.adapters.xhs.adapter.XHSAPIClient",
-        return_value=mock_client,
-    ):
+    with patch("content_downloader.adapters.xhs.adapter.XHSAPIClient", return_value=mock_client), \
+         patch("content_downloader.adapters.xhs.adapter.httpx.AsyncClient", return_value=mock_http):
         adapter = XHSAdapter()
         await adapter.download_single(
             "https://www.xiaohongshu.com/explore/xyz789video",

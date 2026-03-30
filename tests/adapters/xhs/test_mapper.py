@@ -1,207 +1,185 @@
-"""Unit tests for XHS note → ContentItem mapper."""
+"""Unit tests for XHS note → ContentItem mapper (Chinese field names)."""
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-from pathlib import Path
-
 import pytest
 
-from content_downloader.adapters.xhs.mapper import note_to_content_item, _parse_xhs_time
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-def _load_fixture(name: str) -> dict:
-    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
-
-
-# ---------------------------------------------------------------------------
-# _parse_xhs_time
-# ---------------------------------------------------------------------------
-
-
-def test_parse_xhs_time_milliseconds():
-    """_parse_xhs_time converts a millisecond epoch to ISO 8601."""
-    ts_ms = 1710000000000  # 2024-03-09T16:00:00Z
-    result = _parse_xhs_time(ts_ms)
-    assert result.startswith("2024-03-09")
-    assert "T" in result
-
-
-def test_parse_xhs_time_string_input():
-    """_parse_xhs_time accepts string-encoded timestamps."""
-    result = _parse_xhs_time("1710000000000")
-    assert "2024-03-09" in result
-
-
-def test_parse_xhs_time_none_returns_now():
-    """_parse_xhs_time returns a valid ISO timestamp for None input."""
-    result = _parse_xhs_time(None)
-    assert "T" in result
-    # Should be parseable
-    datetime.fromisoformat(result.replace("Z", "+00:00"))
-
-
-def test_parse_xhs_time_invalid_returns_now():
-    """_parse_xhs_time returns a valid ISO timestamp for invalid input."""
-    result = _parse_xhs_time("not-a-timestamp")
-    assert "T" in result
+from content_downloader.adapters.xhs.mapper import (
+    _parse_count,
+    extract_download_urls,
+    extract_note_id,
+    extract_author_id,
+    note_to_content_item,
+)
 
 
 # ---------------------------------------------------------------------------
-# note_to_content_item — gallery note
+# _parse_count — handles "3.8万", "1220", "3.1万", etc.
 # ---------------------------------------------------------------------------
 
 
-def test_gallery_note_basic_fields():
-    """note_to_content_item maps gallery note fields correctly."""
-    fixture = _load_fixture("note_gallery.json")
-    item = note_to_content_item(fixture, source_url="https://www.xiaohongshu.com/explore/abc123gallery")
+class TestParseCount:
+    def test_plain_int(self):
+        assert _parse_count("1220") == 1220
 
-    assert item.platform == "xhs"
-    assert item.content_id == "abc123gallery"
-    assert item.content_type == "gallery"
-    assert item.title == "Beautiful Sunset Photos"
-    assert "Bund" in item.description
-    assert item.author_id == "user456"
-    assert item.author_name == "SunsetPhotographer"
-    assert item.source_url == "https://www.xiaohongshu.com/explore/abc123gallery"
-    assert item.metadata_file == "metadata.json"
+    def test_wan_suffix(self):
+        assert _parse_count("3.8万") == 38000
 
+    def test_wan_integer(self):
+        assert _parse_count("1万") == 10000
 
-def test_gallery_note_engagement_fields():
-    """note_to_content_item maps engagement counters for gallery note."""
-    fixture = _load_fixture("note_gallery.json")
-    item = note_to_content_item(fixture, source_url="https://www.xiaohongshu.com/explore/abc123gallery")
+    def test_yi_suffix(self):
+        assert _parse_count("1.2亿") == 120000000
 
-    assert item.likes == 1024
-    assert item.comments == 88
-    assert item.shares == 256
-    assert item.collects == 512
-    assert item.views == 0  # XHS does not expose view counts
+    def test_int_input(self):
+        assert _parse_count(1220) == 1220
 
+    def test_none(self):
+        assert _parse_count(None) == 0
 
-def test_gallery_note_publish_time():
-    """note_to_content_item parses the millisecond timestamp correctly."""
-    fixture = _load_fixture("note_gallery.json")
-    item = note_to_content_item(fixture, source_url="https://www.xiaohongshu.com/explore/abc123gallery")
-
-    # timestamp 1710000000000 ms = 2024-03-09
-    assert "2024-03-09" in item.publish_time
-
-
-def test_gallery_note_media_files():
-    """note_to_content_item stores provided media_files list."""
-    fixture = _load_fixture("note_gallery.json")
-    media = ["media/img_01.jpg", "media/img_02.jpg", "media/img_03.jpg"]
-    item = note_to_content_item(fixture, source_url="...", media_files=media, cover_file="media/cover.jpg")
-
-    assert item.media_files == media
-    assert item.cover_file == "media/cover.jpg"
-
-
-def test_gallery_note_no_media_files_defaults_to_empty():
-    """note_to_content_item defaults media_files to [] when not provided."""
-    fixture = _load_fixture("note_gallery.json")
-    item = note_to_content_item(fixture, source_url="...")
-
-    assert item.media_files == []
-    assert item.cover_file is None
+    def test_empty_string(self):
+        assert _parse_count("") == 0
 
 
 # ---------------------------------------------------------------------------
-# note_to_content_item — video note
+# extract helpers
 # ---------------------------------------------------------------------------
 
 
-def test_video_note_content_type():
-    """note_to_content_item sets content_type='video' for type='video'."""
-    fixture = _load_fixture("note_video.json")
-    item = note_to_content_item(fixture, source_url="https://www.xiaohongshu.com/explore/xyz789video")
-
-    assert item.content_type == "video"
-    assert item.content_id == "xyz789video"
-    assert item.author_name == "FitnessGuru"
+def _make_response(**data_fields) -> dict:
+    return {"message": "ok", "data": data_fields}
 
 
-def test_video_note_engagement_fields():
-    """note_to_content_item maps engagement counters for video note."""
-    fixture = _load_fixture("note_video.json")
-    item = note_to_content_item(fixture, source_url="...")
+class TestExtractors:
+    def test_extract_note_id(self):
+        resp = _make_response(**{"作品ID": "abc123"})
+        assert extract_note_id(resp) == "abc123"
 
-    assert item.likes == 5000
-    assert item.comments == 320
-    assert item.shares == 1100
-    assert item.collects == 2400
+    def test_extract_note_id_fallback(self):
+        resp = _make_response(note_id="fallback")
+        assert extract_note_id(resp) == "fallback"
 
+    def test_extract_author_id(self):
+        resp = _make_response(**{"作者ID": "user456"})
+        assert extract_author_id(resp) == "user456"
 
-def test_video_note_media_files():
-    """note_to_content_item stores video media files."""
-    fixture = _load_fixture("note_video.json")
-    item = note_to_content_item(
-        fixture,
-        source_url="...",
-        media_files=["media/video.mp4"],
-        cover_file="media/cover.jpg",
-    )
+    def test_extract_download_urls_video(self):
+        resp = _make_response(**{"下载地址": ["http://example.com/video.mp4"]})
+        assert extract_download_urls(resp) == ["http://example.com/video.mp4"]
 
-    assert "media/video.mp4" in item.media_files
-    assert item.cover_file == "media/cover.jpg"
+    def test_extract_download_urls_empty(self):
+        resp = _make_response()
+        assert extract_download_urls(resp) == []
+
+    def test_extract_download_urls_filters_none(self):
+        resp = _make_response(**{"下载地址": [None, "http://a.com/b.jpg", None]})
+        assert extract_download_urls(resp) == ["http://a.com/b.jpg"]
 
 
 # ---------------------------------------------------------------------------
-# Edge cases
+# note_to_content_item — full mapping
 # ---------------------------------------------------------------------------
 
 
-def test_missing_note_id_falls_back_to_id_field():
-    """note_to_content_item uses 'id' field when 'note_id' is absent."""
-    data = {"id": "fallback_id", "type": "normal", "time": 1710000000000}
-    item = note_to_content_item(data, source_url="https://example.com")
-    assert item.content_id == "fallback_id"
-
-
-def test_missing_all_id_fields_uses_empty_string():
-    """note_to_content_item returns empty string content_id when no id present."""
-    data = {"type": "normal", "time": 1710000000000}
-    item = note_to_content_item(data, source_url="https://example.com")
-    assert item.content_id == ""
-
-
-def test_missing_engagement_defaults_to_zero():
-    """note_to_content_item uses 0 for missing engagement fields."""
-    data = {"note_id": "test", "type": "normal", "time": 1710000000000}
-    item = note_to_content_item(data, source_url="https://example.com")
-    assert item.likes == 0
-    assert item.comments == 0
-    assert item.shares == 0
-    assert item.collects == 0
-
-
-def test_source_url_fallback_when_no_note_url():
-    """note_to_content_item uses source_url when note_url is absent."""
-    data = {"note_id": "test", "type": "normal", "time": 1710000000000}
-    item = note_to_content_item(data, source_url="https://fallback.com/test")
-    assert item.source_url == "https://fallback.com/test"
-
-
-def test_note_url_overrides_source_url():
-    """note_to_content_item prefers note_url over the passed source_url."""
-    data = {
-        "note_id": "test",
-        "type": "normal",
-        "time": 1710000000000,
-        "note_url": "https://www.xiaohongshu.com/explore/test",
+def _make_video_response() -> dict:
+    return {
+        "message": "获取小红书作品数据成功",
+        "data": {
+            "作品ID": "68f60f0000000000040230eb",
+            "作品标题": "运营干货全公开",
+            "作品描述": "#小红书官方",
+            "作品类型": "视频",
+            "作者ID": "63fc8880000000001f0329db",
+            "作者昵称": "dontbesilent",
+            "作者链接": "https://www.xiaohongshu.com/user/profile/63fc8880000000001f0329db",
+            "作品链接": "https://www.xiaohongshu.com/explore/68f60f0000000000040230eb",
+            "发布时间": "2025-10-20_18:29:20",
+            "时间戳": 1760956160.0,
+            "点赞数量": "3.8万",
+            "评论数量": "1220",
+            "分享数量": "1万",
+            "收藏数量": "3.1万",
+            "下载地址": ["http://example.com/video.mp4"],
+            "动图地址": [None],
+        },
     }
-    item = note_to_content_item(data, source_url="https://other.com/test")
-    assert item.source_url == "https://www.xiaohongshu.com/explore/test"
 
 
-def test_downloaded_at_is_valid_iso():
-    """note_to_content_item sets downloaded_at to a valid ISO timestamp."""
-    data = {"note_id": "test", "type": "normal", "time": 1710000000000}
-    item = note_to_content_item(data, source_url="https://example.com")
-    # Should be parseable
-    datetime.fromisoformat(item.downloaded_at.replace("Z", "+00:00"))
+class TestNoteToContentItem:
+    def test_video_note_basic_fields(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+        )
+        assert item.platform == "xhs"
+        assert item.content_id == "68f60f0000000000040230eb"
+        assert item.content_type == "video"
+        assert item.title == "运营干货全公开"
+        assert item.author_id == "63fc8880000000001f0329db"
+        assert item.author_name == "dontbesilent"
+
+    def test_video_note_engagement(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+        )
+        assert item.likes == 38000
+        assert item.comments == 1220
+        assert item.shares == 10000
+        assert item.collects == 31000
+
+    def test_video_note_publish_time(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+        )
+        assert "2025" in item.publish_time
+
+    def test_video_note_source_url(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+        )
+        assert "xiaohongshu.com" in item.source_url
+
+    def test_media_files_passed_through(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+            media_files=["media/video.mp4"],
+            cover_file="media/cover.jpg",
+        )
+        assert item.media_files == ["media/video.mp4"]
+        assert item.cover_file == "media/cover.jpg"
+
+    def test_gallery_note(self):
+        resp = {
+            "message": "ok",
+            "data": {
+                "作品ID": "img123",
+                "作品类型": "图文",
+                "作者ID": "user1",
+                "作者昵称": "test",
+            },
+        }
+        item = note_to_content_item(resp, source_url="https://xhs.com/img")
+        assert item.content_type == "gallery"
+
+    def test_fallback_to_source_url(self):
+        resp = {"data": {"作品ID": "x"}}
+        item = note_to_content_item(resp, source_url="https://fallback.com")
+        assert item.source_url == "https://fallback.com"
+
+    def test_missing_fields_default_gracefully(self):
+        resp = {"data": {}}
+        item = note_to_content_item(resp, source_url="https://x.com")
+        assert item.content_id == ""
+        assert item.likes == 0
+        assert item.title == ""
+
+    def test_downloaded_at_is_iso(self):
+        item = note_to_content_item(
+            _make_video_response(),
+            source_url="https://xhs.com/test",
+        )
+        assert "T" in item.downloaded_at

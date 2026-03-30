@@ -10,5 +10,8 @@
   "parallelization": true,
   "text_mode": false,
   "sub_repos": [],
-  "resolve_model_ids": false
+  "resolve_model_ids": false,
+  "workflow": {
+    "_auto_chain_active": false
+  }
 }
