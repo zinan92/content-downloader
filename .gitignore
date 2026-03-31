@@ -43,3 +43,5 @@ cookies.json
 *.log
 tmp/
 .tmp/
+test-output/
+cookies.json

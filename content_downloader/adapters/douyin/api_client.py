@@ -2,7 +2,7 @@
 
 Key changes from original:
 - httpx replaces aiohttp for HTTP calls (consistent with project deps)
-- Removed browser fallback methods (Playwright not required)
+- Playwright browser fallback added (get_video_detail_via_browser)
 - Removed get_user_like/music/mix/collects (Phase 2: post mode only)
 - Error handling maps to DownloadError conventions
 """
@@ -10,12 +10,21 @@ Key changes from original:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
+
+try:
+    from playwright.async_api import async_playwright as _async_playwright
+
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _async_playwright = None  # type: ignore[assignment]
+    _PLAYWRIGHT_AVAILABLE = False
 
 from content_downloader.adapters.douyin.cookie_manager import _sanitize_cookies
 from content_downloader.adapters.douyin.ms_token import MsTokenManager
@@ -29,26 +38,24 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
+# All Chrome/Mac user agents — consistent with the macOS runtime environment
+# and with the fingerprint used in _default_query().
 _USER_AGENT_POOL = [
     (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    ),
-    (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    ),
-    (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     ),
     (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     ),
     (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) "
-        "Gecko/20100101 Firefox/133.0"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     ),
 ]
 
@@ -127,17 +134,17 @@ class DouyinAPIClient:
             "version_code": "170400",
             "version_name": "17.4.0",
             "cookie_enabled": "true",
-            "screen_width": "1920",
-            "screen_height": "1080",
+            "screen_width": "1440",
+            "screen_height": "900",
             "browser_language": "zh-CN",
-            "browser_platform": "Win32",
+            "browser_platform": "MacIntel",
             "browser_name": "Chrome",
-            "browser_version": "123.0.0.0",
+            "browser_version": "131.0.0.0",
             "browser_online": "true",
             "engine_name": "Blink",
-            "engine_version": "123.0.0.0",
-            "os_name": "Windows",
-            "os_version": "10",
+            "engine_version": "131.0.0.0",
+            "os_name": "Mac",
+            "os_version": "10_15_7",
             "cpu_core_num": "8",
             "device_memory": "8",
             "platform": "PC",
@@ -167,7 +174,7 @@ class DouyinAPIClient:
         if not self._abogus_enabled:
             return None
         try:
-            browser_fp = BrowserFingerprintGenerator.generate_fingerprint("Edge")
+            browser_fp = BrowserFingerprintGenerator.generate_fingerprint("Chrome")
             signer = ABogus(fp=browser_fp, user_agent=self.headers["User-Agent"])
             params_with_ab, _ab, ua, _body = signer.generate_abogus(query, "")
             return f"{base_url}?{params_with_ab}", ua
@@ -303,15 +310,15 @@ class DouyinAPIClient:
         )
         return params
 
-    async def get_video_detail(
+    async def _get_video_detail_api(
         self, aweme_id: str, *, suppress_error: bool = False
     ) -> Optional[Dict[str, Any]]:
-        """Fetch metadata for a single video by aweme_id."""
+        """Attempt to fetch video metadata via the signed API (XBogus/ABogus)."""
         params = await self._default_query()
         params.update(
             {
                 "aweme_id": aweme_id,
-                "aid": "1128",
+                "aid": "6383",
             }
         )
         data = await self._request_json(
@@ -322,6 +329,335 @@ class DouyinAPIClient:
         if data:
             return data.get("aweme_detail")
         return None
+
+    async def get_video_detail_via_browser(
+        self, aweme_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch video metadata using a real browser.
+
+        Three extraction strategies (tried in order):
+        1. Intercept /aweme/v1/web/aweme/detail/ XHR response
+        2. Extract from SSR data in page script tags (RENDER_DATA / __NEXT_DATA__)
+        3. Extract video URL directly from page DOM
+        """
+        if not _PLAYWRIGHT_AVAILABLE:
+            logger.warning(
+                "playwright is not installed — browser fallback unavailable. "
+                "Install with: pip install playwright && playwright install chromium"
+            )
+            return None
+
+        video_url = f"{self.BASE_URL}/video/{aweme_id}"
+        logger.info("Browser fallback: opening %s", video_url)
+
+        captured_detail: Optional[Dict[str, Any]] = None
+        captured_video_urls: List[str] = []
+        detail_event = asyncio.Event()
+
+        async with _async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent=self.headers["User-Agent"],
+                viewport={"width": 1280, "height": 800},
+                locale="zh-CN",
+            )
+
+            if self.cookies:
+                playwright_cookies = [
+                    {
+                        "name": name,
+                        "value": value,
+                        "domain": ".douyin.com",
+                        "path": "/",
+                        "httpOnly": False,
+                        "secure": True,
+                        "sameSite": "None",
+                    }
+                    for name, value in self.cookies.items()
+                    if name and value
+                ]
+                await context.add_cookies(playwright_cookies)
+
+            page = await context.new_page()
+
+            # Strategy 1: Intercept API response + capture video CDN URLs
+            async def _on_response(response: Any) -> None:
+                nonlocal captured_detail
+                url = response.url or ""
+
+                # Capture video CDN URLs from network requests
+                if "douyinvod.com" in url and ("video" in url or ".mp4" in url):
+                    content_type = response.headers.get("content-type", "")
+                    if "video" in content_type or url.endswith(".mp4") or "mime_type=video" in url:
+                        captured_video_urls.append(url)
+                        logger.debug("Browser fallback: captured CDN video URL")
+
+                if "/aweme/v1/web/aweme/detail/" not in url and "/aweme/detail/" not in url:
+                    return
+                try:
+                    body = await response.body()
+                    data = json.loads(body)
+                    detail = data.get("aweme_detail")
+                    if detail:
+                        captured_detail = detail
+                        detail_event.set()
+                        logger.info("Browser fallback: intercepted API response for %s", aweme_id)
+                except Exception as exc:
+                    logger.debug("Browser fallback: failed to parse API response: %s", exc)
+
+            page.on("response", _on_response)
+
+            try:
+                await page.goto(video_url, wait_until="domcontentloaded", timeout=30000)
+            except Exception as exc:
+                logger.warning("Browser fallback: navigation error (continuing): %s", exc)
+
+            # Wait a few seconds for API intercept
+            try:
+                await asyncio.wait_for(detail_event.wait(), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.info("Browser fallback: no API intercept, trying SSR extraction...")
+
+            # Strategy 2: Extract from SSR script tags
+            if not captured_detail:
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception:
+                    pass
+
+                ssr_detail = await self._extract_ssr_data(page, aweme_id)
+                if ssr_detail:
+                    captured_detail = ssr_detail
+                    logger.info("Browser fallback: extracted from SSR data for %s", aweme_id)
+
+            # Strategy 3: Extract video URL from DOM or captured network requests
+            if not captured_detail:
+                dom_detail = await self._extract_from_dom(page, aweme_id)
+                if dom_detail:
+                    captured_detail = dom_detail
+                    logger.info("Browser fallback: extracted from DOM for %s", aweme_id)
+
+            # Strategy 4: Use captured CDN video URLs from network traffic
+            if not captured_detail and captured_video_urls:
+                captured_detail = {
+                    "aweme_id": aweme_id,
+                    "desc": "",
+                    "video": {
+                        "play_addr": {
+                            "url_list": captured_video_urls,
+                        },
+                    },
+                    "_source": "network_intercept",
+                }
+                try:
+                    title = await page.title()
+                    captured_detail["desc"] = title or ""
+                except Exception:
+                    pass
+                logger.info("Browser fallback: using %d captured CDN URLs for %s", len(captured_video_urls), aweme_id)
+
+            # Sync cookies back
+            try:
+                storage = await context.storage_state()
+                for c in storage.get("cookies", []):
+                    name = c.get("name", "")
+                    value = c.get("value", "")
+                    if name and value:
+                        self.cookies[name] = value
+            except Exception as exc:
+                logger.debug("Browser fallback: could not sync cookies: %s", exc)
+
+            await browser.close()
+
+        return captured_detail
+
+    async def _extract_ssr_data(
+        self, page: Any, aweme_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Extract video detail from SSR data embedded in page script tags."""
+        js = """
+() => {
+    // Try RENDER_DATA (URL-encoded JSON in script#RENDER_DATA)
+    const renderEl = document.getElementById('RENDER_DATA');
+    if (renderEl) {
+        try {
+            const decoded = decodeURIComponent(renderEl.textContent);
+            return { type: 'RENDER_DATA', data: decoded };
+        } catch(e) {}
+    }
+
+    // Try __NEXT_DATA__
+    const nextEl = document.getElementById('__NEXT_DATA__');
+    if (nextEl) {
+        return { type: '__NEXT_DATA__', data: nextEl.textContent };
+    }
+
+    // Try window._SSR_DATA or window.__SSR_DATA__
+    if (window._SSR_DATA) {
+        return { type: '_SSR_DATA', data: JSON.stringify(window._SSR_DATA) };
+    }
+    if (window.__SSR_DATA__) {
+        return { type: '__SSR_DATA__', data: JSON.stringify(window.__SSR_DATA__) };
+    }
+
+    // Scan all script tags for aweme_detail or playAddr
+    const scripts = document.querySelectorAll('script');
+    for (const s of scripts) {
+        const t = s.textContent || '';
+        if (t.includes('aweme_detail') || t.includes('playAddr') || t.includes('play_addr')) {
+            if (t.length > 100 && t.length < 500000) {
+                return { type: 'script_tag', data: t };
+            }
+        }
+    }
+
+    return null;
+}
+"""
+        try:
+            result = await page.evaluate(js)
+            if not result:
+                return None
+
+            data_str = result.get("data", "")
+            source = result.get("type", "unknown")
+            logger.debug("Browser fallback: found SSR source: %s (%d chars)", source, len(data_str))
+
+            data = json.loads(data_str)
+
+            # Navigate the nested structure to find aweme_detail
+            detail = self._find_aweme_detail(data, aweme_id)
+            return detail
+        except Exception as exc:
+            logger.debug("Browser fallback: SSR extraction failed: %s", exc)
+            return None
+
+    @staticmethod
+    def _find_aweme_detail(data: Any, aweme_id: str) -> Optional[Dict[str, Any]]:
+        """Recursively search for aweme_detail in nested data structures."""
+        if not isinstance(data, dict):
+            return None
+
+        # Direct match
+        if "aweme_detail" in data:
+            detail = data["aweme_detail"]
+            if isinstance(detail, dict):
+                return detail
+
+        # RENDER_DATA format: nested under numbered keys
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+
+            # Check this level
+            if "aweme_detail" in value:
+                detail = value["aweme_detail"]
+                if isinstance(detail, dict):
+                    return detail
+
+            # Check awemeDetail (camelCase variant)
+            if "awemeDetail" in value:
+                detail = value["awemeDetail"]
+                if isinstance(detail, dict):
+                    return detail
+
+            # Go one more level deep
+            for k2, v2 in value.items():
+                if not isinstance(v2, dict):
+                    continue
+                if "aweme_detail" in v2:
+                    detail = v2["aweme_detail"]
+                    if isinstance(detail, dict):
+                        return detail
+                if "awemeDetail" in v2:
+                    detail = v2["awemeDetail"]
+                    if isinstance(detail, dict):
+                        return detail
+
+        return None
+
+    async def _extract_from_dom(
+        self, page: Any, aweme_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Last resort: extract video URL from page DOM and network requests."""
+        js = """
+() => {
+    // Strategy A: Find non-blob video src
+    const videos = document.querySelectorAll('video, video source');
+    for (const v of videos) {
+        const src = v.src || v.getAttribute('src') || '';
+        if (src && src.startsWith('http') && !src.startsWith('blob:')) {
+            return { src: src, title: document.title || '' };
+        }
+    }
+
+    // Strategy B: Search page HTML for CDN video URLs
+    const html = document.documentElement.innerHTML || '';
+    const cdnPatterns = [
+        /https?:\/\/v[0-9a-z-]+\.douyinvod\.com\/[^\s"'<>]+/g,
+        /https?:\/\/[^\s"'<>]*douyinvod[^\s"'<>]+\.mp4[^\s"'<>]*/g,
+        /https?:\/\/[^\s"'<>]*play_addr[^\s"'<>]*/g,
+    ];
+    for (const pattern of cdnPatterns) {
+        const matches = html.match(pattern);
+        if (matches && matches.length > 0) {
+            // Pick the longest URL (most likely the full CDN URL)
+            const best = matches.sort((a, b) => b.length - a.length)[0];
+            return { src: best, title: document.title || '' };
+        }
+    }
+
+    // Strategy C: Check window.__playAddr or similar globals
+    try {
+        const globals = ['__playAddr', '__videoUrl'];
+        for (const g of globals) {
+            if (window[g] && typeof window[g] === 'string' && window[g].startsWith('http')) {
+                return { src: window[g], title: document.title || '' };
+            }
+        }
+    } catch(e) {}
+
+    return null;
+}
+"""
+        try:
+            result = await page.evaluate(js)
+            if not result or not result.get("src"):
+                return None
+
+            # Build a minimal aweme_detail-like dict
+            return {
+                "aweme_id": aweme_id,
+                "desc": result.get("title", ""),
+                "video": {
+                    "play_addr": {
+                        "url_list": [result["src"]],
+                    },
+                },
+                "_source": "dom_extraction",
+            }
+        except Exception as exc:
+            logger.debug("Browser fallback: DOM extraction failed: %s", exc)
+            return None
+
+    async def get_video_detail(
+        self, aweme_id: str, *, suppress_error: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch metadata for a single video by aweme_id.
+
+        Tries the signed API first; if that returns nothing, falls back to
+        intercepting the response in a real Playwright browser session.
+        """
+        detail = await self._get_video_detail_api(aweme_id, suppress_error=suppress_error)
+        if detail:
+            return detail
+        logger.info(
+            "API signing rejected for aweme_id=%s — trying browser fallback", aweme_id
+        )
+        return await self.get_video_detail_via_browser(aweme_id)
 
     async def get_user_post(
         self, sec_uid: str, max_cursor: int = 0, count: int = 20

@@ -376,13 +376,17 @@ async def _download_file(
     dest: Path,
 ) -> None:
     """Download a file from url to dest using the provided client."""
+    # Decode unicode escapes (e.g. \u0026 -> &) that come from DOM extraction
+    clean_url = url.encode("utf-8").decode("unicode_escape") if "\\u" in url else url
     try:
         assert client._client is not None
-        response = await client._client.get(url)
+        # CDN URLs need Referer header to avoid 403
+        headers = {"Referer": "https://www.douyin.com/"}
+        response = await client._client.get(clean_url, headers=headers)
         response.raise_for_status()
         dest.write_bytes(response.content)
     except Exception as exc:
-        logger.warning("Failed to download %s -> %s: %s", url, dest, exc)
+        logger.warning("Failed to download %s -> %s: %s", clean_url, dest, exc)
         raise
 
 

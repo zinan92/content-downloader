@@ -232,6 +232,81 @@ async def _download_profile(
 
 
 # ---------------------------------------------------------------------------
+# fetch-cookies command
+# ---------------------------------------------------------------------------
+
+
+@main.command("fetch-cookies")
+@click.option(
+    "--headless",
+    is_flag=True,
+    default=False,
+    help="Run browser in headless mode (not recommended — CAPTCHA may appear).",
+)
+@click.option(
+    "--output",
+    "-o",
+    default="cookies.json",
+    show_default=True,
+    type=click.Path(path_type=Path),
+    help="Output path for the captured cookies JSON file.",
+)
+@click.option(
+    "--url",
+    default="https://www.douyin.com",
+    show_default=True,
+    help="URL to open in the browser.",
+)
+@click.option(
+    "--browser",
+    default="chromium",
+    show_default=True,
+    type=click.Choice(["chromium", "firefox", "webkit"], case_sensitive=False),
+    help="Playwright browser engine.",
+)
+@click.option(
+    "--keep-all",
+    is_flag=True,
+    default=False,
+    help="Save all cookies, not just the required Douyin set.",
+)
+def fetch_cookies_cmd(
+    headless: bool,
+    output: Path,
+    url: str,
+    browser: str,
+    keep_all: bool,
+) -> None:
+    """Capture Douyin login cookies via a real browser session.
+
+    Opens a browser window so you can log in manually, then saves the
+    captured cookies to OUTPUT (default: cookies.json).  Pass the output
+    file to --cookies when running the download command.
+
+    Requires playwright:  pip install playwright && playwright install chromium
+    """
+    try:
+        from content_downloader.tools.cookie_fetcher import capture_cookies
+    except ImportError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        asyncio.run(
+            capture_cookies(
+                url=url,
+                browser_type=browser,
+                headless=headless,
+                output_path=output,
+                keep_all=keep_all,
+            )
+        )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # list command
 # ---------------------------------------------------------------------------
 
