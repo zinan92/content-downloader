@@ -96,7 +96,11 @@ output/manifest.jsonl      # 全局索引，一行一个 item，append-only
         │           │   │          │ │          │ │          │
         │ XBogus    │   │ HTTP API │ │ HTML GET │ │ yt-dlp   │
         │ signing   │   │ sidecar  │ │ + parse  │ │ subprocess│
-        └─────┬─────┘   └────┬─────┘ └────┬─────┘ └────┬─────┘
+        │     │     │   └────┬─────┘ └────┬─────┘ └────┬─────┘
+        │     ▼     │
+        │ Playwright│
+        │ fallback  │
+        └─────┬─────┘   ┌────┘            │             │
               │               │            │             │
               └───────────────┴────────┬───┴─────────────┘
                                        ▼
@@ -146,10 +150,11 @@ python3 -m content_downloader platforms
 
 | 功能 | 说明 | 状态 |
 |------|------|------|
-| 抖音视频下载 | 去水印 + 封面 + metadata | 已完成 |
+| 抖音视频下载 | 去水印 + 封面 + metadata（API 签名 + Playwright fallback） | 已完成 |
 | 抖音图文下载 | 多图 + 封面 + metadata | 已完成 |
 | 抖音 Profile 批量 | limit/since 增量下载 | 已完成 |
 | 抖音短链接 | v.douyin.com 自动解析 | 已完成 |
+| 抖音 Cookie 采集 | Playwright 浏览器登录 + 一键采集 | 已完成 |
 | 小红书视频 | 通过 XHS-Downloader API | 已完成 |
 | 小红书图文 | 多图下载 + cover | 已完成 |
 | 小红书 sidecar 自管理 | 自动安装 + 启动 | 已完成 |
@@ -180,6 +185,7 @@ python3 -m content_downloader platforms
 | 数据模型 | Pydantic v2 | ContentItem 校验 |
 | CLI | Click | 命令行界面 |
 | 抖音签名 | XBogus / ABogus + gmssl | API 请求签名 |
+| 抖音 Fallback | Playwright + Chromium | 签名失败时浏览器提取 |
 | 小红书 | XHS-Downloader (sidecar) | HTTP API 调用 |
 | X/Twitter | yt-dlp | 媒体下载 |
 | 测试 | pytest + pytest-asyncio | 303 tests, 85% coverage |
@@ -196,10 +202,12 @@ content-downloader/
 │   ├── router.py            # URL -> platform 识别 + adapter 路由
 │   ├── output.py            # 标准化目录结构写入
 │   ├── manifest.py          # JSONL manifest 读写 (file-locked)
+│   ├── tools/
+│   │   └── cookie_fetcher.py # Playwright 浏览器 cookie 采集
 │   └── adapters/
 │       ├── base.py          # PlatformAdapter protocol
 │       ├── fixture.py       # 测试用 fixture adapter
-│       ├── douyin/          # 抖音 (XBogus 签名 + API)
+│       ├── douyin/          # 抖音 (XBogus 签名 + Playwright fallback)
 │       ├── xhs/             # 小红书 (XHS-Downloader sidecar)
 │       ├── wechat_oa/       # 公众号 (HTML 解析)
 │       └── x/               # X/Twitter (yt-dlp)
@@ -212,17 +220,21 @@ content-downloader/
 
 ### 抖音 Cookies
 
-抖音需要浏览器 cookies 进行 API 签名。从 Chrome DevTools 导出：
-
-1. 打开 `douyin.com`，确认已登录
-2. F12 -> Console -> 输入 `document.cookie` -> 复制
-3. 保存为 `cookies.json`（或用 Cookie Editor 导出 Netscape 格式）
+抖音需要浏览器 cookies。推荐使用内置的 cookie 采集工具（Playwright 浏览器自动采集）：
 
 ```bash
+# 一键采集（弹出浏览器，登录后按 Enter）
+python3 -m content_downloader.tools.cookie_fetcher --output cookies.json
+
+# 然后正常下载
 python3 -m content_downloader download "https://www.douyin.com/video/xxx" --cookies cookies.json
 ```
 
-> Cookies 约 7 天有效，过期后重新导出。
+> Cookies 约 1-2 周有效，过期后重新运行 `cookie_fetcher` 即可。
+>
+> 需要先安装 Playwright：`pip install playwright && playwright install chromium`
+
+**Fallback 机制：** 如果 API 签名被拒（返回 HTML 而非 JSON），自动启动 Playwright 浏览器提取视频数据。无需手动干预。
 
 ### CLI 参数
 
