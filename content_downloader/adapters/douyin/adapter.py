@@ -65,12 +65,22 @@ def _build_no_watermark_url(
     """Extract the best no-watermark video URL from aweme data.
 
     Priority:
-    1. url_list entries containing 'watermark=0'
-    2. Other douyin.com URL list entries (XBogus-signed)
-    3. Constructed from video URI via /aweme/v1/play/
-    4. First non-douyin CDN URL as fallback
+    1. download_addr CDN URLs (direct download, most reliable)
+    2. play_addr CDN URLs with 'watermark=0'
+    3. Other CDN URLs from play_addr
+    4. Constructed from video URI via /aweme/v1/play/ (least reliable)
     """
     video = aweme_data.get("video") or {}
+
+    # Priority 1: download_addr CDN URLs (most reliable for full download)
+    dl_addr = video.get("download_addr") or {}
+    dl_urls = [u for u in (dl_addr.get("url_list") or []) if u]
+    for candidate in dl_urls:
+        parsed = urlparse(candidate)
+        if not parsed.netloc.endswith("douyin.com"):
+            return candidate  # CDN URL, use directly
+
+    # Priority 2-3: play_addr URLs
     play_addr = video.get("play_addr") or {}
     url_candidates = [c for c in (play_addr.get("url_list") or []) if c]
     url_candidates.sort(key=lambda u: 0 if "watermark=0" in u else 1)
@@ -79,18 +89,22 @@ def _build_no_watermark_url(
 
     for candidate in url_candidates:
         parsed = urlparse(candidate)
-        if parsed.netloc.endswith("douyin.com"):
-            if "X-Bogus=" not in candidate:
-                signed_url, _ua = api_client.sign_url(candidate)
-                return signed_url
+        if not parsed.netloc.endswith("douyin.com"):
+            fallback_candidate = candidate
+        elif "X-Bogus=" not in candidate:
+            signed_url, _ua = api_client.sign_url(candidate)
+            return signed_url
+        else:
             return candidate
-        fallback_candidate = candidate
 
-    # Build from video URI
+    if fallback_candidate:
+        return fallback_candidate
+
+    # Priority 4: Build from video URI (least reliable, may get rate-limited)
     uri = (
         play_addr.get("uri")
         or video.get("vid")
-        or (video.get("download_addr") or {}).get("uri")
+        or dl_addr.get("uri")
     )
     if uri:
         params = {
@@ -375,16 +389,22 @@ async def _download_file(
     url: str,
     dest: Path,
 ) -> None:
-    """Download a file from url to dest using the provided client."""
-    # Decode unicode escapes (e.g. \u0026 -> &) that come from DOM extraction
+    """Download a file from url to dest, streaming for large files."""
     clean_url = url.encode("utf-8").decode("unicode_escape") if "\\u" in url else url
+    headers = {"Referer": "https://www.douyin.com/"}
     try:
-        assert client._client is not None
-        # CDN URLs need Referer header to avoid 403
-        headers = {"Referer": "https://www.douyin.com/"}
-        response = await client._client.get(clean_url, headers=headers)
-        response.raise_for_status()
-        dest.write_bytes(response.content)
+        # Use a dedicated client with longer timeout for large files
+        async with httpx.AsyncClient(
+            headers={**client.headers, **headers},
+            cookies=client.cookies,
+            timeout=httpx.Timeout(300.0, connect=30.0),
+            follow_redirects=True,
+        ) as http:
+            async with http.stream("GET", clean_url) as response:
+                response.raise_for_status()
+                with open(dest, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                        f.write(chunk)
     except Exception as exc:
         logger.warning("Failed to download %s -> %s: %s", clean_url, dest, exc)
         raise
