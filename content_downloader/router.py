@@ -109,10 +109,24 @@ def get_adapter(
 
     if platform == "douyin":
         from content_downloader.adapters.douyin.adapter import DouyinAdapter
+        from content_downloader.adapters.douyin.cookie_manager import _normalize_cookies
+
+        # Auto-discover cookies if not explicitly provided
+        resolved_path = cookies_path
+        if not resolved_path or not resolved_path.exists():
+            for candidate in [
+                Path.home() / ".douyin-cookies.json",
+                Path("cookies.json"),
+            ]:
+                if candidate.exists():
+                    resolved_path = candidate
+                    break
+
         cookies: dict = {}
-        if cookies_path and cookies_path.exists():
+        if resolved_path and resolved_path.exists():
             try:
-                cookies = json.loads(cookies_path.read_text(encoding="utf-8"))
+                raw = json.loads(resolved_path.read_text(encoding="utf-8"))
+                cookies = _normalize_cookies(raw)
             except Exception:
                 pass
         return DouyinAdapter(cookies=cookies)

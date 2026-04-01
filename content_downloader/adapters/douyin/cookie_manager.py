@@ -14,9 +14,22 @@ from typing import Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_cookies(raw: Dict) -> Dict[str, str]:
-    """Convert cookie dict values to strings and strip whitespace."""
-    return {str(k).strip(): str(v).strip() for k, v in (raw or {}).items() if k}
+def _normalize_cookies(raw) -> Dict[str, str]:
+    """Convert cookies to a flat {name: value} dict.
+
+    Accepts two formats:
+    - dict: {"key": "value", ...} — standard format
+    - list: [{"name": "key", "value": "value", ...}, ...] — browser export format
+    """
+    if isinstance(raw, list):
+        return {
+            str(entry["name"]).strip(): str(entry["value"]).strip()
+            for entry in raw
+            if isinstance(entry, dict) and "name" in entry and "value" in entry
+        }
+    if isinstance(raw, dict):
+        return {str(k).strip(): str(v).strip() for k, v in raw.items() if k}
+    return {}
 
 
 class CookieManager:
@@ -32,7 +45,7 @@ class CookieManager:
 
     def load_from_dict(self, cookies: Dict[str, str]) -> None:
         """Load cookies from a dict (replaces any previously loaded cookies)."""
-        self._cookies = _sanitize_cookies(cookies)
+        self._cookies = _normalize_cookies(cookies)
 
     def load_from_file(self, path: Optional[str] = None) -> bool:
         """Load cookies from a JSON file.
@@ -52,7 +65,7 @@ class CookieManager:
         try:
             with open(target, "r", encoding="utf-8") as f:
                 raw = json.load(f)
-            self._cookies = _sanitize_cookies(raw)
+            self._cookies = _normalize_cookies(raw)
             logger.debug("Loaded %d cookies from %s", len(self._cookies), target)
             return True
         except Exception as exc:
