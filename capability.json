@@ -1,0 +1,66 @@
+{
+  "id": "download",
+  "name": "Content Downloader",
+  "version": "0.1.0",
+  "description": "Unified content download from Douyin, Xiaohongshu, WeChat, and X/Twitter into standardized local files",
+
+  "entrypoint": "content-downloader download",
+  "skill_path": "SKILL.md",
+
+  "install": {
+    "method": "pip",
+    "command": "pip install -e ."
+  },
+  "update": {
+    "method": "git-pull"
+  },
+
+  "dependencies": {
+    "system": ["python3"],
+    "python": ">=3.11",
+    "node": null
+  },
+
+  "input_types": [
+    {
+      "type": "url",
+      "description": "Platform content or profile URL",
+      "examples": [
+        "https://douyin.com/video/xxx",
+        "https://xiaohongshu.com/explore/xxx",
+        "https://mp.weixin.qq.com/s/xxx",
+        "https://x.com/user/status/xxx"
+      ]
+    }
+  ],
+  "output_types": [
+    {
+      "type": "content-directory",
+      "description": "Standardized directory with media files, metadata.json, and content_item.json",
+      "structure": "output/{platform}/{author_id}/{content_id}/"
+    },
+    {
+      "type": "manifest",
+      "description": "Global append-only JSONL index for deduplication",
+      "structure": "output/manifest.jsonl"
+    }
+  ],
+
+  "resources": {
+    "scripts": null,
+    "references": "references/",
+    "assets": null,
+    "examples": null
+  },
+
+  "tags": ["download", "douyin", "xiaohongshu", "wechat", "x", "twitter", "media", "scraper"],
+
+  "workflow": {
+    "before": [],
+    "after": ["extract", "intelligence"]
+  },
+
+  "adapters": {
+    "platforms": ["douyin", "xiaohongshu", "wechat_oa", "x"]
+  }
+}
