@@ -22,6 +22,7 @@ fail unsupported platform     -> error + supported list
 fail auth required (douyin)   -> "prepare cookies.json" instructions
 fail sidecar not running (xhs)-> auto-install + auto-start XHS-Downloader
 fail tool missing (x)         -> yt-dlp auto-installed via pip
+fail CDN stream truncated     -> Range resume-on-partial (auto-reconnect until complete)
 fail single item in batch     -> skip + continue, error logged in manifest
 fail content deleted/private  -> skip + report in result
 ```
@@ -164,6 +165,7 @@ python3 -m content_downloader platforms
 | X 纯文字推文 | metadata + text.txt | 已完成 |
 | 统一 ContentItem | 跨平台标准化数据模型 | 已完成 |
 | manifest.jsonl | 全局 append-only 索引 | 已完成 |
+| CDN 断点续传 | Range resume-on-partial，抖音 CDN 截断时自动重连 | 已完成 |
 | 去重 | 已下载 content_id 自动跳过 | 已完成 |
 | text.txt | 每条内容附带纯文本文件 | 已完成 |
 
@@ -235,6 +237,8 @@ python3 -m content_downloader download "https://www.douyin.com/video/xxx" --cook
 > 需要先安装 Playwright：`pip install playwright && playwright install chromium`
 
 **Fallback 机制：** 如果 API 签名被拒（返回 HTML 而非 JSON），自动启动 Playwright 浏览器提取视频数据。无需手动干预。
+
+**CDN 断点续传：** 抖音 CDN 会在 1-8MB 后强制关闭 HTTP/2 stream（常见于 `source=PackSourceEnum_AWEME_DETAIL` 签名 URL）。下载器自动用 `Range: bytes={pos}-` 重连并追加写入，直到 `Content-Length` 满足。内置 stall 检测（连续 5 次无进展则放弃）和 40 次重连上限。
 
 ### CLI 参数
 
