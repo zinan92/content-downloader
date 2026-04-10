@@ -384,30 +384,113 @@ class DouyinAdapter:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+_STALL_THRESHOLD = 4096  # bytes — less than this per attempt counts as stalled
+_MAX_STALL = 5  # consecutive stalled attempts before giving up
+_MAX_RESUME_ATTEMPTS = 40  # hard ceiling on total reconnects
+
+
 async def _download_file(
     client: DouyinAPIClient,
     url: str,
     dest: Path,
 ) -> None:
-    """Download a file from url to dest, streaming for large files."""
+    """Download a file from url to dest with resume-on-partial support.
+
+    Douyin's CDN can force-close HTTP/2 streams after delivering a fixed chunk
+    (1-8 MB observed). When this happens, we reconnect with a ``Range`` header
+    from the current file offset and keep appending until the full
+    ``Content-Length`` is satisfied.
+
+    Falls back to a single-pass download when the server does not advertise
+    ``Content-Length`` on the first response (e.g. chunked transfer).
+    """
     clean_url = url.encode("utf-8").decode("unicode_escape") if "\\u" in url else url
-    headers = {"Referer": "https://www.douyin.com/"}
-    try:
-        # Use a dedicated client with longer timeout for large files
-        async with httpx.AsyncClient(
-            headers={**client.headers, **headers},
-            cookies=client.cookies,
-            timeout=httpx.Timeout(300.0, connect=30.0),
-            follow_redirects=True,
-        ) as http:
-            async with http.stream("GET", clean_url) as response:
-                response.raise_for_status()
-                with open(dest, "wb") as f:
-                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
-                        f.write(chunk)
-    except Exception as exc:
-        logger.warning("Failed to download %s -> %s: %s", clean_url, dest, exc)
-        raise
+    base_headers = {**client.headers, "Referer": "https://www.douyin.com/"}
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    expected: int | None = None
+    stall_count = 0
+
+    async with httpx.AsyncClient(
+        cookies=client.cookies,
+        timeout=httpx.Timeout(300.0, connect=30.0),
+        follow_redirects=True,
+    ) as http:
+        for attempt in range(1, _MAX_RESUME_ATTEMPTS + 1):
+            pos = dest.stat().st_size if dest.exists() else 0
+
+            # Already complete?
+            if expected is not None and pos >= expected:
+                break
+
+            headers = dict(base_headers)
+            if pos > 0:
+                headers["Range"] = f"bytes={pos}-"
+
+            before = pos
+            try:
+                async with http.stream("GET", clean_url, headers=headers) as resp:
+                    # On the first attempt, record expected total size.
+                    if attempt == 1 and expected is None:
+                        cl = resp.headers.get("content-length")
+                        if cl:
+                            expected = int(cl)
+
+                    if resp.status_code not in (200, 206):
+                        resp.raise_for_status()
+
+                    with open(dest, "ab") as f:
+                        async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                            f.write(chunk)
+
+            except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout):
+                # Expected — CDN closed on us. Will retry with Range.
+                pass
+            except httpx.HTTPStatusError:
+                logger.warning("Failed to download %s -> %s: HTTP %s",
+                               clean_url, dest, resp.status_code)
+                raise
+
+            after = dest.stat().st_size if dest.exists() else 0
+
+            # Done?
+            if expected is not None and after >= expected:
+                break
+
+            # No Content-Length → can't resume; treat as single-pass failure.
+            if expected is None:
+                if after == before:
+                    logger.warning("Failed to download %s -> %s: no data received "
+                                   "and no Content-Length for resume", clean_url, dest)
+                    raise DownloadError(
+                        f"Download failed (no Content-Length) for {clean_url}"
+                    )
+                break
+
+            # Stall detection
+            delta = after - before
+            if delta < _STALL_THRESHOLD:
+                stall_count += 1
+                if stall_count >= _MAX_STALL:
+                    logger.warning(
+                        "Download stalled at %d/%d after %d low-progress attempts: %s",
+                        after, expected, stall_count, clean_url,
+                    )
+                    raise DownloadError(
+                        f"Download stalled at {after}/{expected} for {clean_url}"
+                    )
+            else:
+                stall_count = 0
+        else:
+            after = dest.stat().st_size if dest.exists() else 0
+            logger.warning(
+                "Exhausted %d resume attempts at %d/%s: %s",
+                _MAX_RESUME_ATTEMPTS, after, expected, clean_url,
+            )
+            raise DownloadError(
+                f"Exhausted {_MAX_RESUME_ATTEMPTS} resume attempts for {clean_url}"
+            )
 
 
 def _pick_first_url(item: Any) -> Optional[str]:

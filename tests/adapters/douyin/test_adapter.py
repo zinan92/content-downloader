@@ -14,6 +14,24 @@ from content_downloader.adapters.douyin.adapter import DouyinAdapter
 from content_downloader.adapters.douyin.api_client import DouyinAPIClient
 from content_downloader.models import ContentItem
 
+
+@pytest.fixture(autouse=True)
+def _patch_download_file():
+    """Patch _download_file globally so tests don't hit the network.
+
+    Writes dummy bytes to dest based on file extension.
+    """
+    async def _fake_download(_client, _url, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if "video" in str(dest) or dest.suffix == ".mp4":
+            dest.write_bytes(b"\x00\x01\x02\x03video_data")
+        else:
+            dest.write_bytes(b"\xff\xd8\xff\xe0cover_data")
+
+    with patch("content_downloader.adapters.douyin.adapter._download_file",
+               side_effect=_fake_download):
+        yield
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -81,21 +99,6 @@ class TestDownloadSingle:
                 "FakeUserAgent/1.0",
             )
         )
-
-        # Mock inner httpx client for file downloads
-        mock_http = AsyncMock()
-        mock_video_resp = MagicMock(spec=httpx.Response)
-        mock_video_resp.status_code = 200
-        mock_video_resp.content = _make_dummy_bytes()
-        mock_video_resp.raise_for_status = MagicMock()
-        mock_cover_resp = MagicMock(spec=httpx.Response)
-        mock_cover_resp.status_code = 200
-        mock_cover_resp.content = _make_dummy_image_bytes()
-        mock_cover_resp.raise_for_status = MagicMock()
-        mock_http.get = AsyncMock(
-            side_effect=[mock_video_resp, mock_cover_resp]
-        )
-        mock_client._client = mock_http
 
         with patch.object(adapter, "_make_client", return_value=mock_client):
             item = await adapter.download_single(
@@ -350,12 +353,13 @@ class TestDownloadProfile:
         mock_client.sign_url = MagicMock(return_value=("https://signed.url", "UA"))
         mock_client.build_signed_path = MagicMock(return_value=("https://signed.url", "UA"))
 
-        # Simulate network error on file download
-        mock_http = AsyncMock()
-        mock_http.get = AsyncMock(side_effect=Exception("Connection refused"))
-        mock_client._client = mock_http
+        # Override the autouse _download_file patch to simulate network failure
+        async def _fail_download(_client, _url, _dest):
+            raise Exception("Connection refused")
 
-        with patch.object(adapter, "_make_client", return_value=mock_client):
+        with patch.object(adapter, "_make_client", return_value=mock_client), \
+             patch("content_downloader.adapters.douyin.adapter._download_file",
+                   side_effect=_fail_download):
             result = await adapter.download_profile(
                 "https://www.douyin.com/user/98765",
                 tmp_path,
