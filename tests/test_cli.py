@@ -121,6 +121,24 @@ class TestDownloadCommand:
         )
         assert result.exit_code != 0
 
+    def test_douyin_without_cookies_shows_login_instructions(
+        self, runner, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        result = runner.invoke(
+            main,
+            [
+                "download",
+                "https://www.douyin.com/video/7658238400629083402",
+                "--output-dir",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code != 0
+        output = result.output.lower()
+        assert "cookies" in output
+        assert "login" in output or "登录" in result.output
+
 
 class TestListCommand:
     def test_list_empty(self, runner, tmp_path):

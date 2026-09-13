@@ -12,6 +12,21 @@ from content_downloader.adapters.douyin.adapter import DouyinAdapter, _extract_a
 from content_downloader.adapters.douyin.api_client import DouyinAPIClient
 
 
+@pytest.fixture(autouse=True)
+def _patch_download_file():
+    """Keep short-link tests offline while exercising adapter orchestration."""
+
+    async def _fake_download(_client, _url, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"test-media")
+
+    with patch(
+        "content_downloader.adapters.douyin.adapter._download_file",
+        side_effect=_fake_download,
+    ):
+        yield
+
+
 class TestExtractAwemeId:
     """Unit tests for URL parsing helper."""
 
@@ -59,6 +74,8 @@ class TestShortLinkResolution:
         mock_client = AsyncMock(spec=DouyinAPIClient)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.headers = {}
+        mock_client.cookies = {}
 
         # Short URL resolves to canonical video URL
         resolved = "https://www.douyin.com/video/7380308675841297704"
@@ -99,6 +116,7 @@ class TestShortLinkResolution:
         mock_client = AsyncMock(spec=DouyinAPIClient)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.headers = {}
         mock_client.resolve_short_url = AsyncMock(return_value=None)
 
         with patch.object(adapter, "_make_client", return_value=mock_client):
@@ -128,6 +146,8 @@ class TestShortLinkResolution:
         mock_client = AsyncMock(spec=DouyinAPIClient)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.headers = {}
+        mock_client.cookies = {}
         mock_client.resolve_short_url = AsyncMock()
         mock_client.get_video_detail = AsyncMock(return_value=aweme_data)
         mock_client.sign_url = MagicMock(
