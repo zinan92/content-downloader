@@ -89,6 +89,14 @@ def download_cmd(
         sys.exit(1)
 
     adapter = get_adapter(url, cookies_path=cookies)
+    if platform == "douyin" and not adapter.has_cookies:
+        click.echo(
+            "Error: Douyin download requires login cookies. "
+            "Log in to Douyin, export a cookies JSON file, and pass it with "
+            "--cookies <path>.",
+            err=True,
+        )
+        sys.exit(1)
     output_mgr = OutputManager(output_dir)
     manifest_mgr = ManifestManager(output_dir)
 

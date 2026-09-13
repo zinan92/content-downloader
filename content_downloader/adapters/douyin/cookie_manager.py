@@ -32,6 +32,11 @@ def _normalize_cookies(raw) -> Dict[str, str]:
     return {}
 
 
+def _sanitize_cookies(raw) -> Dict[str, str]:
+    """Keep the historical helper name used by the Douyin API client."""
+    return _normalize_cookies(raw)
+
+
 class CookieManager:
     """Manages Douyin cookies from a JSON file or injected dict.
 

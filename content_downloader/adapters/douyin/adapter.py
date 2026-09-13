@@ -138,6 +138,11 @@ class DouyinAdapter:
         self._cookies = cookies or {}
         self._proxy = proxy
 
+    @property
+    def has_cookies(self) -> bool:
+        """Return whether the adapter has any loaded login cookies."""
+        return bool(self._cookies)
+
     def can_handle(self, url: str) -> bool:
         """Return True if this adapter can handle the URL."""
         return bool(

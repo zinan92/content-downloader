@@ -355,10 +355,14 @@ class DouyinAPIClient:
         detail_event = asyncio.Event()
 
         async with _async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
+            try:
+                browser = await pw.chromium.launch(
+                    headless=False,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+            except Exception as exc:
+                logger.warning("Browser fallback unavailable: %s", exc)
+                return None
             context = await browser.new_context(
                 user_agent=self.headers["User-Agent"],
                 viewport={"width": 1280, "height": 800},
