@@ -198,7 +198,7 @@ class DouyinAdapter:
             # 3. Fetch aweme detail
             aweme_data = await client.get_video_detail(aweme_id)
             if not aweme_data:
-                raise RuntimeError(f"Failed to fetch video detail for aweme_id={aweme_id}")
+                raise RuntimeError(f"Failed to fetch video detail for aweme_id={aweme_id} (the API refused and the web page does not open it: private, removed or restricted?)")
 
             return await self._save_aweme(aweme_data, url, output_dir, client)
 
