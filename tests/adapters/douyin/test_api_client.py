@@ -163,3 +163,16 @@ class TestSignUrl:
         signed, ua = client.build_signed_path("/aweme/v1/play/", {"video_id": "abc"})
         assert "https://www.douyin.com/aweme/v1/play/" in signed
         assert ua  # non-empty user agent
+
+
+def test_landed_on_video_rejects_the_404_redirect() -> None:
+    """A private/removed video redirects to the feed and autoplays someone else's video."""
+    from content_downloader.adapters.douyin.api_client import _landed_on_video
+
+    vid = "7684647880715537727"
+    assert _landed_on_video(f"https://www.douyin.com/video/{vid}", vid)
+    assert _landed_on_video(f"https://www.douyin.com/jingxuan?modal_id={vid}", vid)
+    assert not _landed_on_video(
+        "https://www.douyin.com/jingxuan?previous_page=web_video_404_link&modal_id=7687200557127986153", vid
+    )
+    assert not _landed_on_video("https://www.douyin.com/jingxuan?modal_id=7687200557127986153", vid)

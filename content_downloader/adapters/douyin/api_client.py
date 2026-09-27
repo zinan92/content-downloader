@@ -14,7 +14,7 @@ import json
 import logging
 import random
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
@@ -58,6 +58,21 @@ _USER_AGENT_POOL = [
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     ),
 ]
+
+
+def _landed_on_video(page_url: str, aweme_id: str) -> bool:
+    """Whether the browser is still showing this video.
+
+    A video that is private, removed or restricted does not open on the web: Douyin
+    redirects to the 精选 feed (``previous_page=web_video_404_link``) and autoplays
+    something else. Anything captured from that page belongs to another video.
+    """
+    parsed = urlparse(page_url or "")
+    if "404" in parsed.query:
+        return False
+    if parsed.path.rstrip("/").endswith(f"/video/{aweme_id}"):
+        return True
+    return parse_qs(parsed.query).get("modal_id", [""])[0] == aweme_id
 
 
 class DouyinAPIClient:
@@ -405,7 +420,7 @@ class DouyinAPIClient:
                     body = await response.body()
                     data = json.loads(body)
                     detail = data.get("aweme_detail")
-                    if detail:
+                    if detail and str(detail.get("aweme_id") or "") == str(aweme_id):
                         captured_detail = detail
                         detail_event.set()
                         logger.info("Browser fallback: intercepted API response for %s", aweme_id)
@@ -424,6 +439,16 @@ class DouyinAPIClient:
                 await asyncio.wait_for(detail_event.wait(), timeout=10.0)
             except asyncio.TimeoutError:
                 logger.info("Browser fallback: no API intercept, trying SSR extraction...")
+
+            if not captured_detail and not _landed_on_video(page.url, aweme_id):
+                # Redirected away (private / removed / restricted): every video on this
+                # page is someone else's. Give up instead of downloading the wrong one.
+                logger.warning(
+                    "Browser fallback: %s does not open on the web (landed on %s)",
+                    aweme_id, page.url,
+                )
+                await browser.close()
+                return None
 
             # Strategy 2: Extract from SSR script tags
             if not captured_detail:
